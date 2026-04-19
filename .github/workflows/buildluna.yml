@@ -12,59 +12,27 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        include:  
-          - arch: x86
-            target: winxp
-          - arch: x86
-            target: win7
-            pythonversion: '3.7.9' 
-          - arch: x64
-            target: win7
-            pythonversion: '3.7.9' 
+        include:
           - arch: x64
             target: win10
-            pythonversion: '3.13.12'  
+            pythonversion: '3.13.11'
     steps:
       - uses: actions/checkout@v4
-      # - uses: microsoft/setup-msbuild@v2
-      - if: matrix.target == 'winxp'
-        run: |
-            Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
-            $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
-            $componentsToAdd = @(
-              "Microsoft.VisualStudio.Component.WinXP"
-            )
-            [string]$workloadArgs = $componentsToAdd | ForEach-Object {" --add " +  $_}
-            $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"",$workloadArgs, '--quiet', '--norestart', '--nocache')
-            $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
-            if ($process.ExitCode -eq 0)
-            {
-                Write-Host "components have been successfully added"
-                Get-ChildItem C:\ProgramData\Microsoft\VisualStudio\Packages\Microsoft.Windows.XPSupport.*
-            }
-            else
-            {
-                Write-Host "components were not installed"
-                exit 1
-            }
-      # - uses: GuillaumeFalourd/setup-windows10-sdk-action@v2
-      #   with:
-      #     sdk-version: 26100
-      - if: matrix.target != 'winxp'
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.pythonversion }}
           architecture: ${{ matrix.arch }}
-      - if: matrix.target != 'win10'
-        uses: actions/setup-python@v5
-        with:
-          python-version: 3.13.12
-          architecture: x64
-      - run: C:\hostedtoolcache\windows\Python\3.13.12\x64\python src/scripts/build_lunatranslator.py cpp ${{ matrix.arch }} ${{ matrix.target }}
-      - run: C:\hostedtoolcache\windows\Python\3.13.12\x64\python src/scripts/build_lunatranslator.py hook ${{ matrix.arch }} ${{ matrix.target }}
-      - if: matrix.target != 'winxp'
-        run:  C:\hostedtoolcache\windows\Python\3.13.12\x64\python src/scripts/build_lunatranslator.py pyrt ${{ matrix.arch }} ${{ matrix.pythonversion }} ${{ matrix.target }}
-      - run:  C:\hostedtoolcache\windows\Python\3.13.12\x64\python src/scripts/build_lunatranslator.py merge ${{ matrix.arch }} ${{ matrix.target }}
+
+      - name: Generate app icon from logo.png
+        shell: powershell
+        run: |
+          python -m pip install --upgrade pip pillow
+          python -c "from PIL import Image; src=r'src/files/static/logo.png'; dst=r'src/NativeImpl/exec/luna.ico'; im=Image.open(src).convert('RGBA'); im.save(dst, format='ICO', sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(24,24),(16,16)]); print('generated', dst)"
+
+      - run: C:\hostedtoolcache\windows\Python\3.13.11\x64\python src/scripts/build_lunatranslator.py cpp ${{ matrix.arch }} ${{ matrix.target }} 1
+      - run: C:\hostedtoolcache\windows\Python\3.13.11\x64\python src/scripts/build_lunatranslator.py hook ${{ matrix.arch }} ${{ matrix.target }} 1
+      - run:  C:\hostedtoolcache\windows\Python\3.13.11\x64\python src/scripts/build_lunatranslator.py pyrt ${{ matrix.arch }} ${{ matrix.pythonversion }} ${{ matrix.target }}
+      - run:  C:\hostedtoolcache\windows\Python\3.13.11\x64\python src/scripts/build_lunatranslator.py merge ${{ matrix.arch }} ${{ matrix.target }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -78,10 +46,6 @@ jobs:
   signandrepack:
     runs-on: windows-latest
     needs: [buildall]
-    permissions:
-      contents: write   
-      pages: write
-      id-token: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -89,22 +53,40 @@ jobs:
             path: build
       - run: python src/scripts/build_lunatranslator.py exedlls
 
-      - uses: actions/upload-artifact@v4
-        id: upload-artifact
-        with:
-          name: exedlls
-          path: collect
-  
-      - uses: signpath/github-action-submit-signing-request@v2
-        with:
-          api-token: '${{ secrets.SIGNPATH_APITOKEN }}'
-          organization-id: '2e2b9c90-04bb-4b70-8562-0171927d94c6'
-          project-slug: 'LunaTranslator'
-          signing-policy-slug: 'release-signing'
-          github-artifact-id: '${{ steps.upload-artifact.outputs.artifact-id }}'
-          wait-for-completion: true
-          output-artifact-directory: 'signed_exedlls'
-          artifact-configuration-slug: 'exedlls'
+      - name: Self-sign EXE/DLL (no third-party service)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          # Mirror collect -> signed_exedlls to keep existing repack logic unchanged
+          Copy-Item -Path "collect" -Destination "signed_exedlls" -Recurse -Force
+
+          # Create temporary self-signed code-signing certificate
+          $cert = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject "CN=LunaTranslator Self-Signed CI" `
+            -CertStoreLocation "Cert:\CurrentUser\My" `
+            -NotAfter (Get-Date).AddYears(2)
+
+          # Locate signtool from Windows SDK
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match "\\x64\\signtool.exe$" } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if (-not $signtool) {
+            throw "signtool.exe not found"
+          }
+
+          # Sign all .exe/.dll files in signed_exedlls
+          Get-ChildItem "signed_exedlls" -Recurse -File |
+            Where-Object { $_.Extension -in ".exe", ".dll" } |
+            ForEach-Object {
+              & $signtool sign /fd SHA256 /sha1 $cert.Thumbprint $_.FullName
+              if ($LASTEXITCODE -ne 0) {
+                throw "Failed signing $($_.FullName)"
+              }
+            }
 
       - uses: actions/upload-artifact@v4
         with:

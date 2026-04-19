@@ -44,10 +44,9 @@ pluginDirs = ["DLL32", "DLL64"]
 localeEmulatorFile = "https://github.com/xupefei/Locale-Emulator/releases/download/v2.5.0.1/Locale.Emulator.2.5.0.1.zip"
 LocaleRe = "https://github.com/InWILL/Locale_Remulator/releases/download/v1.6.0/Locale_Remulator.1.6.0.zip"
 
-"https://web.archive.org/web/20220828191750/https://curl.se/windows/dl-7.84.0_9/curl-7.84.0_9-win32-mingw.zip"
-curlFile32xp = "https://web.archive.org/web/20220101212640if_/https://curl.se/windows/dl-7.80.0/curl-7.80.0-win32-mingw.zip"
-curlFile32 = "https://web.archive.org/web/20260102155019if_/https://curl.se/windows/dl-8.8.0_3/curl-8.8.0_3-win32-mingw.zip"
-curlFile64 = "https://web.archive.org/web/20260106011529if_/https://curl.se/windows/dl-8.8.0_3/curl-8.8.0_3-win64-mingw.zip"
+curlFile32xp = "https://web.archive.org/web/20220101212640if_/https://curl.se/windows/dl-7.80.0/curl-7.80.0-win32-mingw.zip"  # "https://github.com/HIllya51/LunaTranslator/releases/latest/download/LunaTranslator_x86_winxp.zip"  #
+curlFile32 = "https://curl.se/windows/dl-8.8.0_3/curl-8.8.0_3-win32-mingw.zip"
+curlFile64 = "https://curl.se/windows/dl-8.8.0_3/curl-8.8.0_3-win64-mingw.zip"
 
 availableLocales = ["cht", "en", "ja", "ko", "ru", "zh"]
 
@@ -290,10 +289,10 @@ if __name__ == "__main__":
     if sys.argv[1] == "download":
         downloadalls(sys.argv[2] if len(sys.argv) >= 3 else "")
     elif sys.argv[1] == "loadversion":
-        with open("version.txt", "r", encoding="utf8") as ff:
-            version_major, version_minor, version_patch, version_revison = (
-                ff.read().strip().split(".")
-            )
+        with open("NativeImpl/version.cmake", "r", encoding="utf8") as ff:
+            pattern = r"set\(VERSION_MAJOR\s*(\d+)\s*\)\nset\(VERSION_MINOR\s*(\d+)\s*\)\nset\(VERSION_PATCH\s*(\d+)\s*\)\nset\(VERSION_REVISION\s*(\d+)\s*\)"
+            match = re.findall(pattern, ff.read())[0]
+            version_major, version_minor, version_patch, version_revison = match
             versionstring = f"v{version_major}.{version_minor}.{version_patch}"
             if int(version_revison):
                 versionstring += f".{version_revison}"
@@ -357,14 +356,26 @@ if __name__ == "__main__":
         shutil.copytree(
             f"NativeImpl/LunaHook/builds/Release_{target}", "files/LunaHook"
         )
-        shutil.copytree(f"NativeImpl/builds/_x64_{target}", "NativeImpl/builds")
-        shutil.copytree(f"NativeImpl/builds/_x86_{target}", "NativeImpl/builds")
-        os.makedirs("files/DLL32")
-        shutil.copy(f"NativeImpl/builds/_x86_{target}/shareddllproxy32.exe", "files")
-        os.system(f"robocopy NativeImpl/builds/_x86_{target} files/DLL32 *.dll")
-        os.makedirs("files/DLL64")
-        shutil.copy(f"NativeImpl/builds/_x64_{target}/shareddllproxy64.exe", "files")
-        os.system(f"robocopy NativeImpl/builds/_x64_{target} files/DLL64 *.dll")
+        x64dir = f"NativeImpl/builds/_x64_{target}"
+        x86dir = f"NativeImpl/builds/_x86_{target}"
+
+        if os.path.exists(x64dir):
+            if not os.path.exists("files/DLL64"):
+                os.makedirs("files/DLL64")
+            shareddllproxy64 = os.path.join(x64dir, "shareddllproxy64.exe")
+            if os.path.exists(shareddllproxy64):
+                shutil.copy(shareddllproxy64, "files")
+            os.system(f"robocopy {x64dir} files/DLL64 *.dll")
+            move_directory_contents(x64dir, "NativeImpl/builds")
+
+        if os.path.exists(x86dir):
+            if not os.path.exists("files/DLL32"):
+                os.makedirs("files/DLL32")
+            shareddllproxy32 = os.path.join(x86dir, "shareddllproxy32.exe")
+            if os.path.exists(shareddllproxy32):
+                shutil.copy(shareddllproxy32, "files")
+            os.system(f"robocopy {x86dir} files/DLL32 *.dll")
+            move_directory_contents(x86dir, "NativeImpl/builds")
 
         os.system(
             f"python {os.path.join(rootthisfiledir,'collectall.py')} {arch} {target}"
