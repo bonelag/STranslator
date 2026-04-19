@@ -45,8 +45,14 @@ localeEmulatorFile = "https://github.com/xupefei/Locale-Emulator/releases/downlo
 LocaleRe = "https://github.com/InWILL/Locale_Remulator/releases/download/v1.6.0/Locale_Remulator.1.6.0.zip"
 
 curlFile32xp = "https://web.archive.org/web/20220101212640if_/https://curl.se/windows/dl-7.80.0/curl-7.80.0-win32-mingw.zip"  # "https://github.com/HIllya51/LunaTranslator/releases/latest/download/LunaTranslator_x86_winxp.zip"  #
-curlFile32 = "https://curl.se/windows/dl-8.8.0_3/curl-8.8.0_3-win32-mingw.zip"
-curlFile64 = "https://curl.se/windows/dl-8.8.0_3/curl-8.8.0_3-win64-mingw.zip"
+curlFile32Candidates = [
+    "https://curl.se/windows/dl-8.19.0_7/curl-8.19.0_7-win32-mingw.zip",
+    "https://curl.se/windows/dl-8.8.0_3/curl-8.8.0_3-win32-mingw.zip",
+]
+curlFile64Candidates = [
+    "https://curl.se/windows/dl-8.19.0_7/curl-8.19.0_7-win64-mingw.zip",
+    "https://curl.se/windows/dl-8.8.0_3/curl-8.8.0_3-win64-mingw.zip",
+]
 
 availableLocales = ["cht", "en", "ja", "ko", "ru", "zh"]
 
@@ -88,6 +94,36 @@ def move_directory_contents(source_dir, destination_dir):
                 fuckmove(
                     os.path.join(item_path, k), os.path.join(destination_dir, item)
                 )
+
+
+def download_first_available(urls):
+    last_error = ""
+    for url in urls:
+        base = url.split("/")[-1]
+        cmd = f'curl -fL -C - -o "{base}" "{url}"'
+        print(cmd)
+        ret = subprocess.run(cmd).returncode
+        if ret == 0 and os.path.exists(base) and os.path.getsize(base) > 0:
+            return base, url
+        last_error = f"download failed: {url}"
+    raise RuntimeError(last_error)
+
+
+def extract_archive(archive):
+    cmd = f'7z x -y "{archive}"'
+    print(cmd)
+    ret = subprocess.run(cmd).returncode
+    if ret != 0:
+        raise RuntimeError(f"extract failed: {archive}")
+
+
+def find_file_by_names(root, names):
+    target_names = [_.lower() for _ in names]
+    for _dir, _, _fs in os.walk(root):
+        for _f in _fs:
+            if _f.lower() in target_names:
+                return os.path.join(_dir, _f)
+    return None
 
 
 def downloadmapie():
@@ -175,15 +211,27 @@ def downloadCurl(target):
                     shutil.move(os.path.join(_dir, _f), "files/DLL32")
         return
     os.chdir(f"{rootDir}/scripts/temp")
-    subprocess.run(f"curl -C - -LO {curlFile32}")
-    subprocess.run(f"curl -C - -LO {curlFile64}")
-    subprocess.run(f"7z x -y {curlFile32.split('/')[-1]}")
-    subprocess.run(f"7z x -y {curlFile64.split('/')[-1]}")
+    base32, url32 = download_first_available(curlFile32Candidates)
+    base64, url64 = download_first_available(curlFile64Candidates)
+    extract_archive(base32)
+    extract_archive(base64)
     os.chdir(rootDir)
-    outputDirName32 = curlFile32.split("/")[-1].replace(".zip", "")
-    fuckmove(f"scripts/temp/{outputDirName32}/bin/libcurl.dll", "files/DLL32")
-    outputDirName64 = curlFile64.split("/")[-1].replace(".zip", "")
-    fuckmove(f"scripts/temp/{outputDirName64}/bin/libcurl-x64.dll", "files/DLL64")
+    outputDirName32 = base32.replace(".zip", "")
+    outputDirName64 = base64.replace(".zip", "")
+
+    path32 = find_file_by_names(
+        f"scripts/temp/{outputDirName32}", ["libcurl.dll", "libcurl-x86.dll"]
+    )
+    if not path32:
+        raise FileNotFoundError(f"libcurl 32-bit not found in archive: {url32}")
+    shutil.move(path32, "files/DLL32")
+
+    path64 = find_file_by_names(
+        f"scripts/temp/{outputDirName64}", ["libcurl-x64.dll", "libcurl.dll"]
+    )
+    if not path64:
+        raise FileNotFoundError(f"libcurl 64-bit not found in archive: {url64}")
+    shutil.move(path64, "files/DLL64")
 
 
 def downloadOCRModel():
