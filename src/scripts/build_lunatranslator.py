@@ -44,15 +44,10 @@ pluginDirs = ["DLL32", "DLL64"]
 localeEmulatorFile = "https://github.com/xupefei/Locale-Emulator/releases/download/v2.5.0.1/Locale.Emulator.2.5.0.1.zip"
 LocaleRe = "https://github.com/InWILL/Locale_Remulator/releases/download/v1.6.0/Locale_Remulator.1.6.0.zip"
 
-curlFile32xp = "https://web.archive.org/web/20220101212640if_/https://curl.se/windows/dl-7.80.0/curl-7.80.0-win32-mingw.zip"  # "https://github.com/HIllya51/LunaTranslator/releases/latest/download/LunaTranslator_x86_winxp.zip"  #
-curlFile32Candidates = [
-    "https://curl.se/windows/dl-8.19.0_7/curl-8.19.0_7-win32-mingw.zip",
-    "https://curl.se/windows/dl-8.8.0_3/curl-8.8.0_3-win32-mingw.zip",
-]
-curlFile64Candidates = [
-    "https://curl.se/windows/dl-8.19.0_7/curl-8.19.0_7-win64-mingw.zip",
-    "https://curl.se/windows/dl-8.8.0_3/curl-8.8.0_3-win64-mingw.zip",
-]
+"https://web.archive.org/web/20220828191750/https://curl.se/windows/dl-7.84.0_9/curl-7.84.0_9-win32-mingw.zip"
+curlFile32xp = "https://web.archive.org/web/20220101212640if_/https://curl.se/windows/dl-7.80.0/curl-7.80.0-win32-mingw.zip"
+curlFile32 = "https://web.archive.org/web/20260102155019if_/https://curl.se/windows/dl-8.8.0_3/curl-8.8.0_3-win32-mingw.zip"
+curlFile64 = "https://web.archive.org/web/20260106011529if_/https://curl.se/windows/dl-8.8.0_3/curl-8.8.0_3-win64-mingw.zip"
 
 availableLocales = ["cht", "en", "ja", "ko", "ru", "zh"]
 
@@ -94,36 +89,6 @@ def move_directory_contents(source_dir, destination_dir):
                 fuckmove(
                     os.path.join(item_path, k), os.path.join(destination_dir, item)
                 )
-
-
-def download_first_available(urls):
-    last_error = ""
-    for url in urls:
-        base = url.split("/")[-1]
-        cmd = f'curl -fL -C - -o "{base}" "{url}"'
-        print(cmd)
-        ret = subprocess.run(cmd).returncode
-        if ret == 0 and os.path.exists(base) and os.path.getsize(base) > 0:
-            return base, url
-        last_error = f"download failed: {url}"
-    raise RuntimeError(last_error)
-
-
-def extract_archive(archive):
-    cmd = f'7z x -y "{archive}"'
-    print(cmd)
-    ret = subprocess.run(cmd).returncode
-    if ret != 0:
-        raise RuntimeError(f"extract failed: {archive}")
-
-
-def find_file_by_names(root, names):
-    target_names = [_.lower() for _ in names]
-    for _dir, _, _fs in os.walk(root):
-        for _f in _fs:
-            if _f.lower() in target_names:
-                return os.path.join(_dir, _f)
-    return None
 
 
 def downloadmapie():
@@ -211,27 +176,15 @@ def downloadCurl(target):
                     shutil.move(os.path.join(_dir, _f), "files/DLL32")
         return
     os.chdir(f"{rootDir}/scripts/temp")
-    base32, url32 = download_first_available(curlFile32Candidates)
-    base64, url64 = download_first_available(curlFile64Candidates)
-    extract_archive(base32)
-    extract_archive(base64)
+    subprocess.run(f"curl -C - -LO {curlFile32}")
+    subprocess.run(f"curl -C - -LO {curlFile64}")
+    subprocess.run(f"7z x -y {curlFile32.split('/')[-1]}")
+    subprocess.run(f"7z x -y {curlFile64.split('/')[-1]}")
     os.chdir(rootDir)
-    outputDirName32 = base32.replace(".zip", "")
-    outputDirName64 = base64.replace(".zip", "")
-
-    path32 = find_file_by_names(
-        f"scripts/temp/{outputDirName32}", ["libcurl.dll", "libcurl-x86.dll"]
-    )
-    if not path32:
-        raise FileNotFoundError(f"libcurl 32-bit not found in archive: {url32}")
-    shutil.move(path32, "files/DLL32")
-
-    path64 = find_file_by_names(
-        f"scripts/temp/{outputDirName64}", ["libcurl-x64.dll", "libcurl.dll"]
-    )
-    if not path64:
-        raise FileNotFoundError(f"libcurl 64-bit not found in archive: {url64}")
-    shutil.move(path64, "files/DLL64")
+    outputDirName32 = curlFile32.split("/")[-1].replace(".zip", "")
+    fuckmove(f"scripts/temp/{outputDirName32}/bin/libcurl.dll", "files/DLL32")
+    outputDirName64 = curlFile64.split("/")[-1].replace(".zip", "")
+    fuckmove(f"scripts/temp/{outputDirName64}/bin/libcurl-x64.dll", "files/DLL64")
 
 
 def downloadOCRModel():
@@ -337,10 +290,10 @@ if __name__ == "__main__":
     if sys.argv[1] == "download":
         downloadalls(sys.argv[2] if len(sys.argv) >= 3 else "")
     elif sys.argv[1] == "loadversion":
-        with open("NativeImpl/version.cmake", "r", encoding="utf8") as ff:
-            pattern = r"set\(VERSION_MAJOR\s*(\d+)\s*\)\nset\(VERSION_MINOR\s*(\d+)\s*\)\nset\(VERSION_PATCH\s*(\d+)\s*\)\nset\(VERSION_REVISION\s*(\d+)\s*\)"
-            match = re.findall(pattern, ff.read())[0]
-            version_major, version_minor, version_patch, version_revison = match
+        with open("version.txt", "r", encoding="utf8") as ff:
+            version_major, version_minor, version_patch, version_revison = (
+                ff.read().strip().split(".")
+            )
             versionstring = f"v{version_major}.{version_minor}.{version_patch}"
             if int(version_revison):
                 versionstring += f".{version_revison}"
@@ -404,26 +357,14 @@ if __name__ == "__main__":
         shutil.copytree(
             f"NativeImpl/LunaHook/builds/Release_{target}", "files/LunaHook"
         )
-        x64dir = f"NativeImpl/builds/_x64_{target}"
-        x86dir = f"NativeImpl/builds/_x86_{target}"
-
-        if os.path.exists(x64dir):
-            if not os.path.exists("files/DLL64"):
-                os.makedirs("files/DLL64")
-            shareddllproxy64 = os.path.join(x64dir, "shareddllproxy64.exe")
-            if os.path.exists(shareddllproxy64):
-                shutil.copy(shareddllproxy64, "files")
-            os.system(f"robocopy {x64dir} files/DLL64 *.dll")
-            move_directory_contents(x64dir, "NativeImpl/builds")
-
-        if os.path.exists(x86dir):
-            if not os.path.exists("files/DLL32"):
-                os.makedirs("files/DLL32")
-            shareddllproxy32 = os.path.join(x86dir, "shareddllproxy32.exe")
-            if os.path.exists(shareddllproxy32):
-                shutil.copy(shareddllproxy32, "files")
-            os.system(f"robocopy {x86dir} files/DLL32 *.dll")
-            move_directory_contents(x86dir, "NativeImpl/builds")
+        shutil.copytree(f"NativeImpl/builds/_x64_{target}", "NativeImpl/builds")
+        shutil.copytree(f"NativeImpl/builds/_x86_{target}", "NativeImpl/builds")
+        os.makedirs("files/DLL32")
+        shutil.copy(f"NativeImpl/builds/_x86_{target}/shareddllproxy32.exe", "files")
+        os.system(f"robocopy NativeImpl/builds/_x86_{target} files/DLL32 *.dll")
+        os.makedirs("files/DLL64")
+        shutil.copy(f"NativeImpl/builds/_x64_{target}/shareddllproxy64.exe", "files")
+        os.system(f"robocopy NativeImpl/builds/_x64_{target} files/DLL64 *.dll")
 
         os.system(
             f"python {os.path.join(rootthisfiledir,'collectall.py')} {arch} {target}"
