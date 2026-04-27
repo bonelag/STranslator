@@ -510,7 +510,7 @@ def dynamicapiname(apiuid):
 def getcopyfrom(uid):
     xx = uid
     while True:
-        cp = globalconfig["fanyi"][xx].get("copyfrom")
+        cp = globalconfig["fanyi"].get(xx, {}).get("copyfrom")
         if not cp:
             return xx
         xx = cp

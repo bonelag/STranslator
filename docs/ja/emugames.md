@@ -417,6 +417,7 @@ LunaTranslatorはエミュレータを通じて多数のゲームをサポート
 
 |  | ID       | Game                |
 | ---- | ---------- | ------------------- |
+|  | NPJH50560 | 文明開華 葵座異聞録 再演 |
 |  | ULJM05491 | サイファーPORTABLE |
 |  | ULJM05962 | 花と乙女に祝福を　～春風の贈り物～　portable |
 |  | ULJM05683 | Starry☆Sky ～in Spring～ Portable |
@@ -942,6 +943,7 @@ LunaTranslatorはエミュレータを通じて多数のゲームをサポート
 
 |  | ID       | Game                |
 | ---- | ---------- | ------------------- |
+|  | SLPM-65016 & SLPM-65017 | Love Songs アイドルがクラスメ～ト |
 |  | SLPM-55206 | S.Y.K ～新説西遊記～ |
 |  | SLPM-66855 & SLPM-66856 | 咎狗の血 True Blood |
 |  | SLPM-55166 | 風色サーフ |
