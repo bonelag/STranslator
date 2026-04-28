@@ -4,7 +4,7 @@ LunaTranslator поддерживает большое количество иг
 
 | Платформа | Поддерживаемые эмуляторы |
 | - | - |
-| NS | ~~yuzu(&ge;1616)~~, ~~sudachi~~, [~~Eden(&le;v0.0.4rc1)~~](https://eden-emu.dev/), [Citron](https://citron-emu.org/)|
+| NS | ~~yuzu(&ge;1616)~~, ~~sudachi~~, [~~Eden(&le;v0.0.4rc1)~~](https://eden-emu.dev/), [Citron](https://citron-neo.github.io/)|
 | PSP | [PPSSPP](https://github.com/hrydgard/ppsspp) &ge;v1.15.0 |
 | PSV | [Vita3K](https://github.com/Vita3K/Vita3K) &ge;v0.1.9.3339 |
 | PS2 | [PCSX2](https://github.com/PCSX2/pcsx2) &ge;v1.7.4473 |
@@ -943,6 +943,7 @@ LunaTranslator поддерживает большое количество иг
 
 |  | ID       | Game                |
 | ---- | ---------- | ------------------- |
+|  | SLPM-66737 | 桜蘭高校ホスト部 |
 |  | SLPM-65016 & SLPM-65017 | Love Songs アイドルがクラスメ～ト |
 |  | SLPM-55206 | S.Y.K ～新説西遊記～ |
 |  | SLPM-66855 & SLPM-66856 | 咎狗の血 True Blood |
