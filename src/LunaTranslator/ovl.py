@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ctypes
 import json
 import re
 from dataclasses import dataclass
@@ -22,6 +23,18 @@ from qtsymbols import (
 )
 
 _overlays = []
+
+WDA_EXCLUDEFROMCAPTURE = 0x00000011
+
+
+def exclude_from_capture(widget: QWidget):
+    try:
+        ctypes.windll.user32.SetWindowDisplayAffinity(
+            int(widget.winId()), WDA_EXCLUDEFROMCAPTURE
+        )
+    except Exception:
+        pass
+
 
 CONFIG = {
     "enable": 1,
@@ -157,6 +170,7 @@ class Overlay(QWidget):
         self.setWindowFlag(Qt.WindowType.Tool, True)
         if hasattr(Qt.WindowType, "WindowTransparentForInput"):
             self.setWindowFlag(Qt.WindowType.WindowTransparentForInput, True)
+        exclude_from_capture(self)
 
         screen = QApplication.primaryScreen()
         rect = screen.geometry()

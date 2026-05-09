@@ -21,7 +21,7 @@ Thumbs.db
 *.7z
 build/
 builds/
-
+.claude
 
 .vscode/settings.json
 src/.cache
