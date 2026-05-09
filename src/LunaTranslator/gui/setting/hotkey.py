@@ -279,6 +279,7 @@ def registrhotkeys(self):
         "_52": toggle_overlay,
         "_53": close_all_overlays,
         "51": lambda: gobject.base.translation_ui.changemousetransparentstate(1),
+        "disableothers": functools.partial(__enable, self, exception="disableothers"),
     }
 
     for name in globalconfig["myquickkeys"]:
@@ -293,6 +294,7 @@ hotkeys = [
     [
         "通用",
         [
+            "disableothers",
             "_1",
             "_2",
             "_3",
@@ -516,9 +518,15 @@ def setTab_quick_lazy(self, ls):
     return grids
 
 
-def __enable(self, x):
+def __enable(self, exception=None, *_):
+    if exception == "disableothers":
+        gobject.tempconfig["disableothers"] = not gobject.tempconfig.get(
+            "disableothers", False
+        )
     for quick in globalconfig["quick_setting"]["all"]:
         if quick not in self.bindfunctions:
+            continue
+        if quick == exception:
             continue
         regist_or_not_key(self, quick)
 
@@ -533,7 +541,11 @@ def regist_or_not_key(self, name, _=None):
         return
     keystring = __.get("keystring")
     if (not keystring) or (
-        not (__.get("use") and globalconfig["quick_setting"]["use"])
+        not (
+            __.get("use")
+            and globalconfig["quick_setting"]["use"]
+            and not gobject.tempconfig.get("disableothers", False)
+        )
     ):
         return
 

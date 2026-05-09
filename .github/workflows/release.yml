@@ -45,7 +45,7 @@ jobs:
             throw "Missing build/signed/LunaTranslator_x64_win10.zip"
           }
 
-      - uses: softprops/action-gh-release@v2.2.2
+      - uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.loadversion.outputs.version }}
           name: ${{ needs.loadversion.outputs.version }}
