@@ -200,7 +200,11 @@ namespace Msg
 	definefunction(Warning, HOSTINFO::Warning);
 	definefunction(EmuConnected, HOSTINFO::EmuConnected);
 	definefunction(EmuWarning, HOSTINFO::EmuWarning);
-	definefunction(EmuGameName, HOSTINFO::EmuGameName);
+	void EmuGameInfo(const char *id, const char *title, const char *version)
+	{
+		EmuGameInfoNotif buffer(id, title, version);
+		WriteFile(hookPipe, &buffer, sizeof(buffer), DUMMY, nullptr);
+	}
 
 #undef definefunction
 #undef vhostinfoW
@@ -352,7 +356,7 @@ bool NewHook_1(HookParam &hp, LPCSTR lpname, bool silentlyfail = false)
 	{
 		if (hp.emu_addr)
 		{
-			Msg::Log("%x => %p", hp.emu_addr, (uintptr_t)hp.address);
+			Msg::Log("%08X => %p", hp.emu_addr, (uintptr_t)hp.address);
 			std::lock_guard __(JIT_HP_Records_lock);
 			JIT_HP_Records.push_back(hp);
 		}

@@ -14,6 +14,7 @@ import NativeUtils
 import gobject
 from NativeUtils import WebView2
 import re
+from myutils.hwnd import getExeIcon, getcurrexe
 from gui.qevent import DarkLightChangedEvent, DarkLightSettingChangedEvent
 from myutils.config import _TR, globalconfig, mayberelpath, dynamiclink
 from myutils.wrapper import Singleton, threader, tryprint
@@ -34,6 +35,17 @@ from gui.dynalang import (
     LMainWindow,
     LToolButton,
 )
+
+def load_specific_icon_size(ico_path):
+    reader = QImageReader(ico_path)
+    total_images = reader.imageCount()
+    best_image = None
+    for i in range(total_images):
+        reader.jumpToImage(i)
+        size = reader.size()
+        if best_image is None or size.width() > best_image.size().width():
+            best_image = QPixmap.fromImage(reader.read())
+    return best_image
 
 
 class FocusCombo(QComboBox):
@@ -1137,9 +1149,8 @@ def getsimplecombobox(
         )
     else:
         if len(lst):
-            if (k not in d) or (initvar >= len(lst)):
+            if (default is None and (k not in d)) or (initvar >= len(lst)):
                 initvar = 0
-
             s.setCurrentIndex(initvar)
         s.currentIndexChanged.connect(functools.partial(callbackwrap, d, k, callback))
     if fixedsize:
@@ -1148,10 +1159,18 @@ def getsimplecombobox(
 
 
 def D_getsimplecombobox(
-    lst, d, k, callback=None, fixedsize=False, internal=None, static=False, sizeX=False
+    lst,
+    d,
+    k,
+    callback=None,
+    fixedsize=False,
+    internal=None,
+    static=False,
+    sizeX=False,
+    default=None,
 ):
     return lambda: getsimplecombobox(
-        lst, d, k, callback, fixedsize, internal, static, sizeX=sizeX
+        lst, d, k, callback, fixedsize, internal, static, sizeX=sizeX, default=default
     )
 
 
@@ -1196,9 +1215,18 @@ def getIconButton(
     fix=True,
     tips=None,
     color=None,
+    checkablechangecolor=True,
 ):
 
-    b = IconButton(icon, enable, qicon, fix=fix, tips=tips, color=color)
+    b = IconButton(
+        icon,
+        enable,
+        qicon,
+        fix=fix,
+        tips=tips,
+        color=color,
+        checkablechangecolor=checkablechangecolor,
+    )
     if callback:
         b.clicked_1.connect(callback)
     if callback2:
@@ -1274,9 +1302,16 @@ def check_grid_append(grids: "list[list]", minlen=None):
 
 
 def getcolorbutton(
-    parent, d: dict, key, callback=None, alpha=False, tips="颜色", cantzeroalpha=False
+    parent,
+    d: dict,
+    key,
+    callback=None,
+    alpha=False,
+    tips="颜色",
+    cantzeroalpha=False,
+    default=None,
 ):
-    qicon = qtawesome.icon("fa.paint-brush", color=d.get(key))
+    qicon = qtawesome.icon("fa.paint-brush", color=d.get(key, default))
     b = IconButton(None, qicon=qicon, tips=tips)
     cb = functools.partial(
         __selectcolor,
@@ -1287,6 +1322,7 @@ def getcolorbutton(
         callback,
         alpha=alpha,
         cantzeroalpha=cantzeroalpha,
+        default=default,
     )
     b.clicked.connect(cb)
     return b
@@ -1411,14 +1447,15 @@ def getColor(color, parent, alpha=False):
 def __selectcolor(
     parent: QWidget,
     button: QPushButton,
-    configdict,
+    configdict: dict,
     configkey,
     callback=None,
     alpha=False,
     cantzeroalpha=False,
+    default=None,
 ):
 
-    color = getColor(QColor(configdict[configkey]), parent, alpha)
+    color = getColor(QColor(configdict.get(configkey, default)), parent, alpha)
     if not color.isValid():
         return
     if alpha and cantzeroalpha and (color.alpha() == 0):
@@ -1564,22 +1601,18 @@ class AbstractWebviewWidget(QWidget):
 
     def _parsehtml_dark(self, html):
         if nowisdark():
-            html = (
-                """
+            html = """
     <style>
         body 
         { 
             background-color: rgb(44,44,44);
             color: white; 
         }
-    </style>"""
-                + html
-            )
+    </style>""" + html
         return html
 
     def _parsehtml_dark_auto(self, html):
-        return (
-            """
+        return """
 <style>
 @media (prefers-color-scheme: dark) 
 {
@@ -1593,9 +1626,7 @@ class AbstractWebviewWidget(QWidget):
     }
 }
 </style>
-"""
-            + html
-        )
+""" + html
 
 
 SingleExtensionSetting = None
@@ -2025,12 +2056,16 @@ class WebviewWidget_for_auto(WebviewWidget):
     reloadx = pyqtSignal()
 
     def appendext(self):
-        globalconfig["webviewLoadExt_cishu"] = not globalconfig["webviewLoadExt_cishu"]
+        globalconfig["webviewLoadExt_cishu"] = not globalconfig.get(
+            "webviewLoadExt_cishu", True
+        )
         auto_select_webview.switchtype()
 
     def __init__(self, parent=None, transp=False) -> None:
         super().__init__(
-            parent, loadext=globalconfig["webviewLoadExt_cishu"], transp=transp
+            parent,
+            loadext=globalconfig.get("webviewLoadExt_cishu", True),
+            transp=transp,
         )
         self.pluginsedit.connect(functools.partial(Exteditor, self))
         self.reloadx.connect(self.appendext)
@@ -2040,13 +2075,13 @@ class WebviewWidget_for_auto(WebviewWidget):
             nexti,
             lambda: _TR("附加浏览器插件"),
             threader(self.reloadx.emit),
-            getchecked=lambda: globalconfig["webviewLoadExt_cishu"],
+            getchecked=lambda: globalconfig.get("webviewLoadExt_cishu", True),
         )
         nexti = self.add_menu_noselect(
             nexti,
             lambda: _TR("浏览器插件"),
             threader(self.pluginsedit.emit),
-            getuse=lambda: globalconfig["webviewLoadExt_cishu"],
+            getuse=lambda: globalconfig.get("webviewLoadExt_cishu", True),
         )
         nexti = self.add_menu_noselect(nexti)
         self.cachezoom = 1
@@ -3198,8 +3233,9 @@ class IconButton(LPushButton):
         if tips:
             self.setToolTip(tips)
         self._FixedSize = None
+        self.pixmap_ = None
         self._color = color
-        self._icon = icon
+        self._setIconStr(icon)
         self.clicked.connect(self.clicked_1)
         self.clicked.connect(self.__seticon)
         self._qicon = qicon
@@ -3223,14 +3259,27 @@ class IconButton(LPushButton):
         self._color = color
         self.__seticon()
 
+    def _setIconStr(self, icon: str):
+        if icon is not None and len(icon) > 1 and (icon == "luna" or not icon.startswith("fa.")):
+            self.pixmap_ = (
+                getExeIcon(getcurrexe(), icon=False, large=True)
+                if icon == "luna"
+                else load_specific_icon_size(icon)
+            )
+            self._icon = None
+        else:
+            self.pixmap_ = None
+            self._icon = icon
     def setIconStr(self, icon: str):
-        self._icon = icon
+        self._setIconStr(icon)
         self.__seticon()
 
     def iconStr(self):
         return self._icon
 
     def __seticon(self):
+        if self.pixmap_ is not None:
+            return self.setIcon(QIcon(self.pixmap_))
         if self._qicon:
             icon = self._qicon
         else:
@@ -3513,8 +3562,7 @@ class SClickableLabel(QLabel):
             }
             QLabel:hover{
                 background-color: rgba(128,128,128,0.3)
-            }"""
-            ""
+            }""" ""
             if b
             else """QLabel{
                 background:transparent

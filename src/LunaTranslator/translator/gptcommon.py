@@ -5,6 +5,7 @@ from myutils.utils import (
     APIType,
     common_list_models,
     common_parse_normal_response,
+    common_parse_gemini_response_text,
     common_create_gemini_request,
     common_create_gpt_data,
 )
@@ -97,7 +98,7 @@ def commonparseresponse_good(
                         else:
                             yield msg
             rs = json_data["choices"][0].get("finish_reason")
-            if rs and rs != "null":
+            if rs and rs != "null" and not (msg or reasoning_content):
                 break
         except:
             raise Exception(json_data)
@@ -106,22 +107,37 @@ def commonparseresponse_good(
 
 def parseresponsegemini(response: requests.Response, markdown2html: bool):
     line = ""
+    _gemini_text_line = re.compile(r'^"text"\s*:\s*("(?:\\.|[^"\\])*")\s*,?$')
     for __x in response.iter_lines(decode_unicode=True):
         __x = __x.strip()
-        if not __x.startswith('"text":'):
+        if not __x:
             continue
+        if __x.startswith("data: "):
+            __x = __x[6:].strip()
+            if __x == "[DONE]":
+                break
         try:
-            __x = json.loads("{" + __x + "}")["text"]
+            text = common_parse_gemini_response_text(json.loads(__x))
         except:
-            # gemini-3-flash 之后还有别的东西
+            text = None
+        if text is None:
+            match = _gemini_text_line.match(__x)
+            if not match:
+                continue
+            try:
+                text = json.loads(match.group(1))
+            except:
+                # Some Gemini variants add non-text fields around text chunks.
+                continue
+        if not text:
             continue
-        line += __x
+        line += text
         if markdown2html:
             _msg = NativeUtils.Markdown2Html(line)
             yield "\0"
             yield "LUNASHOWHTML" + _msg
         else:
-            yield __x
+            yield text
     return line
 
 

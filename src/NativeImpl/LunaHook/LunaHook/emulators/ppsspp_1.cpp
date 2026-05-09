@@ -1547,6 +1547,29 @@ namespace
         }
         ULJM05943F(buffer, hpx);
     }
+    DECLARE_FUNCTION(ULJM05823F, const char *_);
+    void ULJM05823(TextBuffer *buffer, HookParam *hpx)
+    {
+        auto s = buffer->strA();
+        if (s.find("#n") == s.npos)
+        {
+            HookParam hp;
+            hp.address = (uintptr_t)ULJM05823F;
+            hp.offset = GETARG(1);
+            hp.type = USING_STRING | NO_CONTEXT | FULL_STRING;
+            static auto _ = NewHook(hp, hpx->name);
+            ULJM05823F(s.c_str());
+            return buffer->clear();
+        }
+        ULJM05943F(buffer, hpx);
+    }
+    void NPJH50715(TextBuffer *buffer, HookParam *hp)
+    {
+        auto ws = buffer->strAW();
+        ws = remapkatakana(ws);
+        ws = re::sub(ws, LR"(\{ruby:(.*?)&.*?\})", L"$1");
+        buffer->fromWA(ws);
+    }
 }
 struct emfuncinfoX
 {
@@ -1554,6 +1577,8 @@ struct emfuncinfoX
     emfuncinfo info;
 };
 static const emfuncinfoX emfunctionhooks_1[] = {
+    // 恋愛0キロメートル Portable
+    {0x881F154, {FULL_STRING, 1, 0, 0, NPJH50715, "NPJH50715"}},
     // 文明開華 葵座異聞録 再演
     {0x886A55C, {FULL_STRING, 0, 0, 0, FULJM05889, "NPJH50560"}},
     {0x886A600, {FULL_STRING, 0xC, 0, 0, FULJM05889, "NPJH50560"}}, // name
@@ -1744,8 +1769,7 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     // アーメン・ノワール ポータブル
     {0x883b6a8, {0, 0, 0, 0, ULJM05943F, "ULJM06064"}},
     // デス・コネクション　ポータブル
-    {0x882AEF4, {0, 0, 0, 0, ULJM05943F, "ULJM05823"}},
-    {0x88B2464, {0, 0, 0, 0, ULJM05823_2, "ULJM05823"}}, // text+name->name
+    {0x8855594, {FULL_STRING, 0, 0, 0, ULJM05823, "ULJM05823"}},
     // しらつゆの怪
     {0x888A26C, {0, 0, 0, 0, ULJM06289, "ULJM06289"}},
     // ダイヤの国のアリス～Wonderful Wonder World～
@@ -1849,6 +1873,10 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     {0x8863D5C, {0, 3, 0, 0, ULJM05874, "ULJM05874"}},
     // メモリーズオフ ゆびきりの記憶
     {0x88A50B0, {0, 1, 0, 0, ULJM06040_1, "ULJM05875"}},
+    // Memories Off ～それから～
+    {0x89435F8, {FULL_STRING, 0, 0, 0, 0, "ULJM05350"}},
+    // ユア・メモリーズオフ
+    {0x88EF260, {0, 1, 0, 0, FULJM05603, "ULJM05435"}},
     // CLANNAD
     {0x880F240, {CODEC_UTF16, 0, 0, 0, ULJM05282, std::vector<const char *>{"ULJM05338", "ULJM05339"}}},
     // ＣＬＡＮＮＡＤ　光見守る坂道で　上巻
@@ -1873,8 +1901,6 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     {0x882C6B4, {0, 6, 0, 0, NewLineCharFilterA, "ULJS00124"}},
     // code_18
     {0x884B8B8, {0, 0, 0, 0, ULJM05821, "ULJM05936"}},
-    // ユア・メモリーズオフ
-    {0x88EF260, {0, 1, 0, 0, FULJM05603, "ULJM05435"}},
     // 華ヤカ哉、我ガ一族
     {0x885138C, {FULL_STRING, 1, 0, 0, ULJM05691, "ULJM05691"}},
     // 華ヤカ哉、我ガ一族 キネマモザイク

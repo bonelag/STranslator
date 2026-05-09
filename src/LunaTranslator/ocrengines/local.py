@@ -261,7 +261,7 @@ class question(QWidget):
         url: str = data["link"]
         self.progresssetval.emit("……", 0)
         file_size = 0
-        req = requests.get(url, verify=False, proxies=getproxy(), stream=True)
+        req = requests.get(url, proxies=getproxy(), stream=True)
         size = int(req.headers["Content-Length"])
         target = gobject.gettempdir("ocrmodel/" + hashlib.md5(url.encode()).hexdigest())
         md5 = hashlib.md5()
@@ -272,11 +272,14 @@ class question(QWidget):
                 md5.update(_)
                 file_size += len(_)
                 prg = int(10000 * file_size / size)
-                prg100 = prg / 100
                 self.progresssetval.emit(
-                    _TR("总大小_{} _进度_{:0.2f}%").format(asize, prg100),
+                    _TR("{}/{} _进度_{:0.2f}%").format(
+                        format_bytes(file_size), asize, prg / 100
+                    ),
                     prg,
                 )
+        if file_size != size:
+            raise Exception()
         self.progresssetval.emit(_TR("正在解压"), 10000)
         self.writeinfos(data, target, md5.hexdigest())
 
@@ -374,7 +377,6 @@ class question(QWidget):
         try:
             result = requests.get(
                 dynamiclink("Resource/ocr_models_list"),
-                verify=False,
                 proxies=getproxy(),
             ).json()
         except:

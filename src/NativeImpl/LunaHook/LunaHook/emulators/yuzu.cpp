@@ -15,13 +15,9 @@ namespace
         if (RegisterBlock)
         {
             auto beginSubSig1 = "CC 40 5? 5? 5?";
-            auto lookbackSize = 0x400;
-            auto address = RegisterBlock - lookbackSize;
-            auto subs = find_pattern(beginSubSig1, address, address + lookbackSize);
+            auto subs = find_pattern(beginSubSig1, RegisterBlock - 0x400, RegisterBlock);
             if (subs)
-            {
                 return subs + 1;
-            }
         }
 
         auto PatchSig1 = "4????? 4????? 4????? FF?? ?? 4????? ?? 4????? 75 ?? 4????? ?? 4????? ?? 4?";
@@ -242,7 +238,7 @@ namespace
             game_info = GameInfo{title_name, title_id, title_version};
             if (game_info.id)
             {
-                Msg::EmuGameName("%s %s %s", game_info.name.c_str(), ull2hex(game_info.id).c_str(), game_info.version.c_str());
+                Msg::EmuGameInfo(ull2hex(game_info.id).c_str(), game_info.name.c_str(), game_info.version.c_str());
             }
             jitaddrclear();
         };
@@ -307,7 +303,7 @@ struct NSGameInfoC
         game_info = std::move(info);
         if (game_info.id)
         {
-            Msg::EmuGameName("%s %s %s", game_info.name.c_str(), ull2hex(game_info.id).c_str(), game_info.version.c_str());
+            Msg::EmuGameInfo(ull2hex(game_info.id).c_str(), game_info.name.c_str(), game_info.version.c_str());
         }
         return true;
     }

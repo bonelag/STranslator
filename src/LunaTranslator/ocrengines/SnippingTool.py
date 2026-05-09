@@ -13,7 +13,6 @@ import re, uuid
 from gui.dynalang import LPushButton, LLabel
 from gui.usefulwidget import VisLFormLayout
 
-
 flist = ["oneocr.dll", "oneocr.onemodel", "onnxruntime.dll"]
 cachedir = "cache/SnippingTool"
 packageFamilyName = "Microsoft.ScreenSketch_8wekyb3d8bbwe"
@@ -87,12 +86,15 @@ class question(QWidget):
                 ff.write(_)
                 file_size += len(_)
                 prg = int(10000 * file_size / size)
-                prg100 = prg / 100
                 self.progresssetval.emit(
-                    _TR("总大小_{} _进度_{:0.2f}%").format(asize, prg100),
+                    _TR("{}/{}_进度_{:0.2f}%").format(
+                        format_bytes(file_size), asize, prg / 100
+                    ),
                     prg,
                 )
 
+        if file_size != size:
+            raise Exception()
         self.progresssetval.emit(_TR("正在解压"), 10000)
         self.unzipmsix(target)
 
@@ -143,7 +145,7 @@ class question(QWidget):
     def downloadx(self, url: str):
 
         file_size = 0
-        req = requests.get(url, verify=False, proxies=getproxy(), stream=True)
+        req = requests.get(url, proxies=getproxy(), stream=True)
         size = int(req.headers["Content-Length"])
         target = gobject.gettempdir(url.split("/")[-1])
         with open(target, "wb") as ff:
@@ -152,11 +154,14 @@ class question(QWidget):
                 ff.write(_)
                 file_size += len(_)
                 prg = int(10000 * file_size / size)
-                prg100 = prg / 100
                 self.progresssetval.emit(
-                    _TR("总大小_{} _进度_{:0.2f}%").format(asize, prg100),
+                    _TR("{}/{} _进度_{:0.2f}%").format(
+                        format_bytes(file_size), asize, prg / 100
+                    ),
                     prg,
                 )
+        if file_size != size:
+            raise Exception()
         self.progresssetval.emit(_TR("正在解压"), 10000)
         with zipfile.ZipFile(target) as zipf:
             zipf.extractall(gobject.getcachedir())

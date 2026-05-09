@@ -12,6 +12,7 @@ from myutils.config import (
     get_launchpath,
     _TR,
     postprocessconfig,
+    defaultpost,
     globalconfig,
     static_data,
 )
@@ -33,7 +34,7 @@ from myutils.utils import (
 from gui.inputdialog import (
     noundictconfigdialog1,
     yuyinzhidingsetting,
-    postconfigdialog2x,
+    stringreplacedialog,
     autoinitdialog,
     autoinitdialog_items,
     postconfigdialog,
@@ -50,7 +51,7 @@ from gui.usefulwidget import (
     getboxlayout,
     NQGroupBox,
     clearlayout,
-    getcenterX,
+    IconButton,
     getsimplecombobox,
     D_getIconButton,
     D_getsimpleswitch,
@@ -100,13 +101,10 @@ def maybehavebutton(self, gameuid, post):
         if "args" in postprocessconfig[post]:
             if post == "stringreplace":
                 callback = functools.partial(
-                    postconfigdialog2x,
+                    stringreplacedialog,
                     self,
-                    save_text_process_info["postprocessconfig"][post]["args"][
-                        "internal"
-                    ],
-                    save_text_process_info["postprocessconfig"][post]["name"],
-                    ["原文内容", "替换为"],
+                    save_text_process_info["postprocessconfig"][post],
+                    True,
                 )
             elif isinstance(list(postprocessconfig[post]["args"].values())[0], dict):
                 callback = functools.partial(
@@ -369,16 +367,13 @@ class dialog_setting_game_internal(QWidget):
             functools.partial(savehook_new_data[gameuid].__setitem__, "title")
         )
         titleedit.returnPressed.connect(_titlechange)
-
-        formLayout.addRow(
-            "标题",
-            getboxlayout(
-                [
-                    titleedit,
-                    getIconButton(_titlechange, icon="fa.search"),
-                ]
-            ),
-        )
+        __list = [
+            titleedit,
+            getIconButton(_titlechange, icon="fa.search"),
+        ]
+        if savehook_new_data[gameuid].get("emugameid"):
+            __list.insert(1, getsmalllabel(savehook_new_data[gameuid].get("emugameid")))
+        formLayout.addRow("标题", getboxlayout(__list))
 
         functs = [
             ("游戏设置", functools.partial(self.___tabf3, self.makegamesettings)),
@@ -558,7 +553,7 @@ class dialog_setting_game_internal(QWidget):
     def getrenameablellabel(self, key, name):
 
         def checkclickable(name: ClickableLabel):
-            name.setClickable(globalconfig["useproxy"])
+            name.setClickable(globalconfig.get("useproxy", True))
 
         name = ClickableLabel(name)
         fn = functools.partial(self.renameapi, name, key)
@@ -650,13 +645,13 @@ class dialog_setting_game_internal(QWidget):
 
     def getstatistic(self, formLayout: QVBoxLayout, gameuid):
 
-        chart = chartwidget()
+        chart = chartwidget(timechart=True)
         chart.xtext = lambda x: (
             "0" if x == 0 else str(datetime.fromtimestamp(x)).split(" ")[0]
         )
         chart.ytext = lambda y: self.formattime(y)
 
-        chart2 = chartwidget()
+        chart2 = chartwidget(timechart=False)
         chart2.xtext = chart.xtext
         chart2.ytext = str
         self._timelabel = QLabel()
@@ -703,6 +698,20 @@ class dialog_setting_game_internal(QWidget):
             tm.setChecked(True)
         else:
             wc.setChecked(True)
+
+        btn = IconButton(
+            icon="fa.line-chart",
+            parent=self,
+            checkable=True,
+            checkablechangecolor=False,
+        )
+        btn.setChecked(globalconfig.get("timecharttype", 0) == 0)
+        btn.clicked.connect(
+            lambda x: (
+                globalconfig.__setitem__("timecharttype", 0 if x else 1),
+                self.update(),
+            )
+        )
         formLayout.addLayout(
             getboxlayout(
                 [
@@ -715,6 +724,7 @@ class dialog_setting_game_internal(QWidget):
                         icon="fa.edit", callback=functools.partial(timelistediter, self)
                     ),
                     getIconButton(self.__refresh, "fa.refresh"),
+                    btn,
                 ]
             )
         )
@@ -999,7 +1009,13 @@ class dialog_setting_game_internal(QWidget):
         def __delay1():
             if "tts_skip_regex" not in savehook_new_data[gameuid]:
                 savehook_new_data[gameuid]["tts_skip_regex"] = []
-            yuyinzhidingsetting(self, savehook_new_data[gameuid]["tts_skip_regex"])
+            yuyinzhidingsetting(
+                self,
+                savehook_new_data[gameuid]["tts_skip_regex"],
+                savehook_new_data[gameuid],
+                "tts_skip_merge",
+                False,
+            )
 
         def __delay2():
             if "tts_repair_regex" not in savehook_new_data[gameuid]:
@@ -1012,12 +1028,15 @@ class dialog_setting_game_internal(QWidget):
                 "语音修正",
                 ["原文", "替换"],
                 extraX=savehook_new_data[gameuid],
+                merged=savehook_new_data[gameuid],
+                mergek="tts_repair_merge",
+                mergedf=False,
             )
 
         automakegrid(
             formLayout2,
             [
-                ["", "", "", "", getcenterX("继承默认"), ""],
+                ["", "", "", ""],
                 [
                     getsmalllabel("语音指定"),
                     D_getsimpleswitch(
@@ -1026,12 +1045,6 @@ class dialog_setting_game_internal(QWidget):
                         default=globalconfig["ttscommon"]["tts_skip"],
                     ),
                     D_getIconButton(callback=__delay1),
-                    "",
-                    getcenterX(
-                        D_getsimpleswitch(
-                            savehook_new_data[gameuid], "tts_skip_merge", default=False
-                        ),
-                    ),
                 ],
                 [
                     getsmalllabel("语音修正"),
@@ -1041,14 +1054,6 @@ class dialog_setting_game_internal(QWidget):
                         default=globalconfig["ttscommon"]["tts_repair"],
                     ),
                     D_getIconButton(callback=__delay2),
-                    "",
-                    getcenterX(
-                        D_getsimpleswitch(
-                            savehook_new_data[gameuid],
-                            "tts_repair_merge",
-                            default=False,
-                        )
-                    ),
                 ],
             ],
         )
@@ -1093,10 +1098,10 @@ class dialog_setting_game_internal(QWidget):
             formLayout,
             klass=QGridLayout,
         )
-        vbox.addLayout(getcenterX("继承默认")(), 0, 4)
-        vbox.addWidget(QLabel(), 0, 5)
+        objects = [["", "", "", ""]]
 
-        for i, item in enumerate(static_data["transoptimi"]):
+        for item in static_data["transoptimi"]:
+
             name = item["name"]
             visname = item["visname"]
             if not checkpostlangmatch(name):
@@ -1109,33 +1114,17 @@ class dialog_setting_game_internal(QWidget):
             def __(_f, _1, gameuid):
                 return _f(_1, gameuid)
 
-            vbox.addWidget(LLabel(visname), i + 1, 0)
-            vbox.addWidget(
+            obj = [
+                getsmalllabel(visname),
                 getsimpleswitch(
                     savehook_new_data[gameuid],
                     name + "_use",
                     default=False,
                 ),
-                i + 1,
-                1,
-            )
-            vbox.addWidget(
                 getIconButton(callback=functools.partial(__, setting, self, gameuid)),
-                i + 1,
-                2,
-            )
-            vbox.addWidget(QLabel(), i + 1, 3)
-            vbox.addLayout(
-                getcenterX(
-                    getsimpleswitch(
-                        savehook_new_data[gameuid],
-                        name + "_merge",
-                        default=False,
-                    )
-                )(),
-                i + 1,
-                4,
-            )
+            ]
+            objects.append(obj)
+        automakegrid(vbox, objects)
 
     def gettextproc(self, formLayout: LFormLayout, gameuid):
 
@@ -1232,7 +1221,10 @@ class dialog_setting_game_internal(QWidget):
             "save_text_process_info"
         ]["postprocessconfig"]
         if _internal not in __dict:
-            __dict[_internal] = copy.deepcopy(postprocessconfig[_internal])
+            if _internal == "stringreplace":
+                __dict[_internal] = copy.deepcopy(defaultpost[_internal])
+            else:
+                __dict[_internal] = copy.deepcopy(postprocessconfig[_internal])
             __dict[_internal]["use"] = True
         btn = maybehavebutton(self, self.__privatetextproc_gameuid, _internal)
 

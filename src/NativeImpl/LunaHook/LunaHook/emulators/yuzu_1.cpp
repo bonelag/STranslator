@@ -502,6 +502,18 @@ namespace
         s = re::sub(s, LR"([\r\n]+)");
         buffer->from(s);
     }
+    template <int i>
+    void F0100B6501FE4C000_1(TextBuffer *buffer, HookParam *hp)
+    {
+        auto s = buffer->strW();
+        static std::wstring last;
+        if (startWith(s, last))
+        {
+            buffer->from(s.substr(last.size()));
+        }
+        last = s;
+        F0100B6501FE4C000(buffer, hp);
+    }
     void F0100BDD01AAE4000(TextBuffer *buffer, HookParam *hp)
     {
         auto s = buffer->strA();
@@ -2848,6 +2860,9 @@ struct emfuncinfoX
     emfuncinfo info;
 };
 static const emfuncinfoX emfunctionhooks_1[] = {
+    // Gakuen Club
+    {0x80128A00, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, F010042300C4F6000_1, 0x010052900B8EE000ull, "1.0.0"}},
+    {0x8012962C, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, F010042300C4F6000_1, 0x010052900B8EE000ull, "1.1.0"}},
     // ハンサムロンダリング -the mystic lover-
     {0x834D665C, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, F010056B024B92000, 0x010056B024B92000ull, "1.0.0"}},
     {0x834D669C, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, F010056B024B92000, 0x010056B024B92000ull, nullptr}}, // 1.1.0 & 1.1.1
@@ -4360,9 +4375,9 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     {0x8017F17C, {CODEC_UTF16, 8, 0, 0, F010048101D49E000, 0x010048101D49E000ull, "1.0.1"}},
     {0x8011aea4, {CODEC_UTF16, 9, 0, 0, F010048101D49E000, 0x010048101D49E000ull, "1.0.1"}},
     // 喧嘩番長 乙女 ダブルパック
-    {0x81801c7c, {CODEC_UTF16, 0, 0x14, 0, F0100B6501FE4C000, 0x0100B6501FE4C000ull, "1.1.0"}},
+    {0x81801c7c, {CODEC_UTF16, 0, 0x14, 0, F0100B6501FE4C000_1<1>, 0x0100B6501FE4C000ull, "1.1.0"}},
     {0x8161f640, {CODEC_UTF16, 0, 0x14, 0, F0100B6501FE4C000, 0x0100B6501FE4C000ull, "1.1.0"}},
-    {0x817f8490, {CODEC_UTF16, 1, 0x14, 0, F0100B6501FE4C000, 0x0100B6501FE4C000ull, "1.1.0"}},
+    {0x817f8490, {CODEC_UTF16, 1, 0x14, 0, F0100B6501FE4C000_1<0>, 0x0100B6501FE4C000ull, "1.1.0"}},
     // 喧嘩番長 乙女 2nd Rumble !!
     {0x81A7C250, {CODEC_UTF16, 1, 0x14, 0, F0100B6501FE4C000, 0x01004CA01D51E000ull, "1.0.0"}}, // text
     {0x82DEDB70, {CODEC_UTF16, 1, 0x14, 0, F0100B6501FE4C000, 0x01004CA01D51E000ull, "1.0.2"}}, // text

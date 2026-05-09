@@ -237,7 +237,7 @@ class __uid2gamepath:
 uid2gamepath = __uid2gamepath()
 
 # 建立索引，当游戏特别多的时候，节省时间
-gamepath2uid_index = {}
+gamepath2uid_index: "dict[str, list[str]]" = {}
 for uid in savehook_new_data:
     _p = os.path.abspath(savehook_new_data[uid]["gamepath"])
     if _p not in gamepath2uid_index:
@@ -261,6 +261,37 @@ def findgameuidofpath(gamepath, findall=False):
             return None, None
     gamepath = os.path.normpath(gamepath)
     uids = gamepath2uid_index.get(gamepath, [])
+    if findall:
+        return uids
+    collect = []
+    for sub in savegametaged:
+        if sub == 1:
+            continue
+        if sub is None:
+            use = savehook_new_list
+        else:
+            use = sub["games"]
+        minidx = len(use)
+        minuid = None
+        for uid in uids:
+            if uid in use:
+                idx = use.index(uid)
+                if minidx > idx:
+                    minidx = idx
+                    minuid = uid
+        if minuid:
+            return minuid, use
+    if findall:
+        return collect
+    else:
+        return None, None
+
+
+def findgameuidofemugame(gameid, findall=False):
+    uids = []
+    for uid in savehook_new_data:
+        if gameid == savehook_new_data[uid].get("emugameid"):
+            uids.append(uid)
     if findall:
         return uids
     collect = []

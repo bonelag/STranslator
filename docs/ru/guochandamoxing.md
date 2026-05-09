@@ -125,17 +125,9 @@
 
 Замените `{endpoint}` и `{deployName}` на ваши значения endpoint и deployName
 
-== deepinfra
-
-**API Key** https://deepinfra.com/dash/api_keys
-
 == cerebras
 
 **API Key** https://cloud.cerebras.ai/  ->  API Keys
-
-== Chutes
-
-**API Key** https://chutes.ai/app/api
 
 :::
 
@@ -146,6 +138,10 @@
 == DeepSeek
 
 **API Key** https://platform.deepseek.com/api_keys
+
+== Xiaomi MiMo
+
+**API Key** https://platform.xiaomimimo.com/#/console/api-keys
 
 == Alibaba Cloud Bailian
 
@@ -169,10 +165,6 @@
 == Zhipu AI
 
 **API Key** https://bigmodel.cn/usercenter/apikeys
-
-== 01.AI
-
-**API Key** https://platform.lingyiwanwu.com/apikeys
 
 == SiliconFlow
 

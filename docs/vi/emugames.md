@@ -17,6 +17,7 @@ LunaTranslator hỗ trợ rất nhiều trò chơi thông qua trình giả lập
 
 |  | ID       | Game                |
 | ---- | ---------- | ------------------- |
+|  | 010052900B8EE000 | Gakuen Club |
 |  | 010056B024B92000 | ハンサムロンダリング -the mystic lover- |
 |  | 01002AB02254C000 | Glass Heart Princess |
 |  | 010016C011AAA000 | この素晴らしい世界に祝福を！　この欲望の衣装に寵愛を！ |
@@ -417,6 +418,7 @@ LunaTranslator hỗ trợ rất nhiều trò chơi thông qua trình giả lập
 
 |  | ID       | Game                |
 | ---- | ---------- | ------------------- |
+|  | NPJH50715 | 恋愛0キロメートル Portable |
 |  | NPJH50560 | 文明開華 葵座異聞録 再演 |
 |  | ULJM05491 | サイファーPORTABLE |
 |  | ULJM05962 | 花と乙女に祝福を　～春風の贈り物～　portable |
@@ -551,6 +553,8 @@ LunaTranslator hỗ trợ rất nhiều trò chơi thông qua trình giả lập
 |  | ULJM06373 | 裏語 薄桜鬼～暁の調べ～ |
 |  | ULJM05874 | メモリーズオフ ゆびきりの記憶 ふたりの風流庵 |
 |  | ULJM05875 | メモリーズオフ ゆびきりの記憶 |
+|  | ULJM05350 | Memories Off ～それから～ |
+|  | ULJM05435 | ユア・メモリーズオフ |
 |  | ULJM05338 & ULJM05339 | CLANNAD |
 |  | NPJH50266 | ＣＬＡＮＮＡＤ　光見守る坂道で　上巻 |
 |  | NPJH50273 | ＣＬＡＮＮＡＤ　光見守る坂道で　下巻 |
@@ -563,7 +567,6 @@ LunaTranslator hỗ trợ rất nhiều trò chơi thông qua trình giả lập
 |  | ULJM05821 | CHAOS;HEAD らぶChu☆Chu! |
 |  | ULJS00124 | 涼宮ハルヒの約束 |
 |  | ULJM05936 | code_18 |
-|  | ULJM05435 | ユア・メモリーズオフ |
 |  | ULJM05691 | 華ヤカ哉、我ガ一族 |
 |  | ULJM05998 | 華ヤカ哉、我ガ一族 キネマモザイク |
 |  | ULJM06263 | 華ヤカ哉、我ガ一族 黄昏ポウラスタ |
@@ -943,13 +946,16 @@ LunaTranslator hỗ trợ rất nhiều trò chơi thông qua trình giả lập
 
 |  | ID       | Game                |
 | ---- | ---------- | ------------------- |
+|  | SLPM-65393 | 漢のためのバイブル THE 友情アドベンチャー ～炎多留・魂～ |
+|  | SLPM-62597 | 学園ヘヴン おかわりっ！ |
+|  | SLPS-25693 | プリンセス・プリンセス 姫たちのアブナい放課後 |
+|  | SLPM-55103 | モノクローム・ファクター cross road |
 |  | SLPM-66737 | 桜蘭高校ホスト部 |
 |  | SLPM-65016 & SLPM-65017 | Love Songs アイドルがクラスメ～ト |
 |  | SLPM-55206 | S.Y.K ～新説西遊記～ |
 |  | SLPM-66855 & SLPM-66856 | 咎狗の血 True Blood |
 |  | SLPM-55166 | 風色サーフ |
 |  | SLPM-66845 | 悠久ノ桜 |
-|  | SLPM-62597 | 学園ヘヴン おかわりっ！ |
 |  | SLPM-66214 | WHITE CLARITY ～And The tears became you.～ |
 |  | SLPS-25282 | 学園ヘヴン BOY'S LOVE SCRAMBLE！ |
 |  | SLPM-55121 | 不確定世界の探偵紳士 ～悪行双麻の事件ファイル～ |

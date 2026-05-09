@@ -158,8 +158,9 @@ class BASEOBJECT(QObject):
     llamacppstdoutstatus = pyqtSignal(dict)
     llamacppcurrversion = pyqtSignal(object)
     llamacpparchcheck = pyqtSignal(object)
-    llamacppdownloadprogress = pyqtSignal(str, float)
+    llamacppdownloadprogress = pyqtSignal(str, str, object, object)
     llamacppdownloadcheck = pyqtSignal(int)
+    llamacppposttask = pyqtSignal(str, object)
     wheelhistory = pyqtSignal(int)
 
     def connectsignal(self, signal: pyqtBoundSignal, callback):
@@ -235,6 +236,8 @@ class BASEOBJECT(QObject):
             return (self.currenttranslate_1, self.currenttext)[self.latest_is_origin]
 
     def __wheelhistory(self, offset: int):
+        if not globalconfig.get("enable_wheel_history", True):
+            return
         hist = self.history.get_offset(offset)
         if not hist:
             return
@@ -256,6 +259,7 @@ class BASEOBJECT(QObject):
         self.initsignals()
         self.history = HistoryHelper()
         self.currentisdark = None
+        self.currentmica = None
         self.update_avalable = False
         self.translators: "dict[str, basetrans]" = {}
         self.cishus: "dict[str, cishubase]" = {}
@@ -713,7 +717,7 @@ class BASEOBJECT(QObject):
             _showrawfunction = functools.partial(
                 self._delaypreparefixrank, _showrawfunction, real_fix_rank, is_auto_run
             )
-        if not (updateTranslate or globalconfig["refresh_on_get_trans"]):
+        if not (updateTranslate or globalconfig.get("refresh_on_get_trans", False)):
             _showrawfunction()
             _showrawfunction = None
         read_trans_once_check = []
@@ -1304,9 +1308,7 @@ class BASEOBJECT(QObject):
             else:
                 NativeUtils.clearEffect(int(widget.winId()))
         else:
-            NativeUtils.SetTheme(
-                int(widget.winId()), dark, globalconfig["WindowBackdrop"]
-            )
+            NativeUtils.SetTheme(int(widget.winId()), dark, self.currentmica)
 
     def checkkeypresssatisfy(self, key, df=False):
         if not globalconfig["wordclickkbtriggerneed"].get(key, df):
@@ -1506,12 +1508,13 @@ class BASEOBJECT(QObject):
 
         dark = nowisdark()
         qtawesome.isdark = dark
-        if self.currentisdark != dark:
+        __curr = (dark, globalconfig.get("WindowBackdrop", 3))
+        if (self.currentisdark, self.currentmica) != __curr:
+            self.currentisdark, self.currentmica = __curr
             for widget in QApplication.allWidgets():
                 QApplication.postEvent(widget, DarkLightChangedEvent(dark))
             for widget in QApplication.topLevelWidgets():
                 self.setdarkandbackdrop(widget, dark)
-        self.currentisdark = dark
         darklight = ["light", "dark"][dark]
 
         style = ""
