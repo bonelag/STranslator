@@ -383,15 +383,34 @@ class OCRResultParsed:
             juhe = _group_text_lines(boxs, texts, self.result.vertical)
             lines = []
             for grouped in juhe:
-                line_box = boxs[grouped[0]]
-                for idx in grouped[1:]:
-                    line_box = _OCRBlockS.four_point_box_union(line_box, boxs[idx])
-                x1 = line_box[0] + self.offset[0]
-                y1 = line_box[1] + self.offset[1]
-                w = line_box[2] - line_box[0]
-                h = line_box[3] - line_box[1]
-                line_text = self.space.join([texts[idx] for idx in grouped])
-                lines.append("[{:.0f} {:.0f}|{:.0f} {:.0f}] {}".format(x1, y1, w, h, line_text))
+                chunks = []
+                current = []
+                last_box = None
+                for idx in grouped:
+                    box = boxs[idx]
+                    if last_box:
+                        gap = box[0] - last_box[2] if not self.result.vertical else last_box[1] - box[3]
+                        limit = globalconfig["ocrmergelines_distance"] * min(
+                            min(last_box[2] - last_box[0], last_box[3] - last_box[1]),
+                            min(box[2] - box[0], box[3] - box[1]),
+                        )
+                        if gap > limit:
+                            chunks.append(current)
+                            current = []
+                    current.append(idx)
+                    last_box = box
+                if current:
+                    chunks.append(current)
+                for chunk in chunks:
+                    line_box = boxs[chunk[0]]
+                    for idx in chunk[1:]:
+                        line_box = _OCRBlockS.four_point_box_union(line_box, boxs[idx])
+                    x1 = line_box[0] + self.offset[0]
+                    y1 = line_box[1] + self.offset[1]
+                    w = line_box[2] - line_box[0]
+                    h = line_box[3] - line_box[1]
+                    line_text = self.space.join([texts[idx] for idx in chunk])
+                    lines.append("[{:.0f} {:.0f}|{:.0f} {:.0f}] {}".format(x1, y1, w, h, line_text))
             textonly = "\n".join(lines)
         if self.result.isocrtranslate:
             return textonly

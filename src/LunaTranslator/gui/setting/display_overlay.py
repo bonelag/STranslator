@@ -21,7 +21,7 @@ def save_overlay_config():
     
     # Filter only relevant keys to save
     save_data = {k: v for k, v in ovl.CONFIG.items() if k in [
-        "enable", "text_color", "stroke_color", "stroke_width",
+        "enable", "auto_mode", "text_color", "stroke_color", "stroke_width",
         "min_font_size", "max_font_size", "font_family",
         "background_color", "box_expansion", "timeout_ms",
         "horizontal_padding", "vertical_padding"
@@ -87,14 +87,72 @@ def right_layout(w, unit="", fixed_width=None, unit_width=30):
     lay.setContentsMargins(0,0,0,0)
     lay.addStretch()
     lay.addWidget(w)
-    
+
     # Always add a unit label with fixed width for alignment
     unit_label = QLabel(unit)
     unit_label.setFixedWidth(unit_width)
     unit_label.setAlignment(Qt.AlignLeft | Qt.AlignVCenter)
     lay.addWidget(unit_label)
-    
+
     return bg
+
+
+def set_item_visible(item, visible):
+    widget = item.widget()
+    if widget:
+        widget.setVisible(visible)
+        return
+    layout = item.layout()
+    if not layout:
+        return
+    for index in range(layout.count()):
+        set_item_visible(layout.itemAt(index), visible)
+
+
+def set_manual_rows_visible(anchor, visible):
+    grid = anchor.parent().layout() if anchor.parent() else None
+    if not grid:
+        return
+    for row in range(2, grid.rowCount()):
+        for col in range(grid.columnCount()):
+            item = grid.itemAtPosition(row, col)
+            if item:
+                set_item_visible(item, visible)
+
+
+def create_switch_row(d, key, callback=None):
+    switch = D_getsimpleswitch(d, key, callback=callback)()
+    anchor = QWidget()
+    lay = QHBoxLayout(anchor)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.addStretch()
+    lay.addWidget(switch)
+    lay.addSpacing(30)
+    return anchor
+
+
+def create_auto_switch():
+    anchor = QWidget()
+
+    def on_change(value):
+        ovl.CONFIG["auto_mode"] = int(value)
+        save_overlay_config()
+        set_manual_rows_visible(anchor, not ovl.CONFIG.get("auto_mode", 0))
+
+    switch = D_getsimpleswitch(ovl.CONFIG, "auto_mode", callback=on_change)()
+    lay = QHBoxLayout(anchor)
+    lay.setContentsMargins(0, 0, 0, 0)
+    lay.addStretch()
+    lay.addWidget(switch)
+    lay.addSpacing(30)
+
+    def apply_initial_visibility():
+        QTimer.singleShot(
+            0,
+            lambda: set_manual_rows_visible(anchor, not ovl.CONFIG.get("auto_mode", 0)),
+        )
+
+    return anchor, apply_initial_visibility
 
 def overlaysetting(self):
     # Helper to save on change
@@ -115,6 +173,69 @@ def overlaysetting(self):
             ovl.CONFIG[rgb_key] = "#000000"
 
     box_width = 250
+    manual_rows = [
+        [
+            _TR("ovlTextColor"),
+            D_getcolorbutton(self, ovl.CONFIG, "_text_rgb", callback=lambda _: update_color_with_opacity(self, "text_color", "_text_rgb", "_text_alpha")),
+            (QWidget(), 0),
+            _TR("ovlTextOpacity"),
+            functools.partial(create_opacity_slider_generic, self, "text_color", "_text_rgb", "_text_alpha"),
+        ],
+        [
+            _TR("ovlStrokeColor"),
+            D_getcolorbutton(self, ovl.CONFIG, "_stroke_rgb", callback=lambda _: update_color_with_opacity(self, "stroke_color", "_stroke_rgb", "_stroke_alpha")),
+            (QWidget(), 0),
+            _TR("ovlTextOpacity"),
+            functools.partial(create_opacity_slider_generic, self, "stroke_color", "_stroke_rgb", "_stroke_alpha"),
+        ],
+        [
+            _TR("ovlBackColor"),
+            D_getcolorbutton(self, ovl.CONFIG, "_bg_rgb", callback=lambda _: update_color_with_opacity(self, "background_color", "_bg_rgb", "_bg_alpha")),
+            (QWidget(), 0),
+            _TR("ovlTextOpacity"),
+            functools.partial(create_opacity_slider_generic, self, "background_color", "_bg_rgb", "_bg_alpha"),
+        ],
+        [
+            _TR("ovlStrokeWidth"),
+            (QWidget(), 0),
+            right_layout(D_getspinbox(0, 10, ovl.CONFIG, "stroke_width", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
+        ],
+        [
+            _TR("ovlBoxExpansion"),
+            (QWidget(), 0),
+            right_layout(D_getspinbox(0, 50, ovl.CONFIG, "box_expansion", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
+        ],
+        [
+            _TR("ovlTextSizeMin"),
+            (QWidget(), 0),
+            right_layout(D_getspinbox(1, 100, ovl.CONFIG, "min_font_size", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
+        ],
+        [
+            _TR("ovlTextSizeMax"),
+            (QWidget(), 0),
+            right_layout(D_getspinbox(1, 200, ovl.CONFIG, "max_font_size", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
+        ],
+        [
+            _TR("ovlTextFont"),
+            (QWidget(), 0),
+            right_layout(create_font_combo, "", fixed_width=box_width),
+        ],
+        [
+            _TR("ovlPaddingH"),
+            (QWidget(), 0),
+            right_layout(D_getspinbox(0, 50, ovl.CONFIG, "horizontal_padding", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
+        ],
+        [
+            _TR("ovlPaddingV"),
+            (QWidget(), 0),
+            right_layout(D_getspinbox(0, 50, ovl.CONFIG, "vertical_padding", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
+        ],
+        [
+            _TR("ovlTimeout"),
+            (QWidget(), 0),
+            right_layout(D_getspinbox(100, 60000, ovl.CONFIG, "timeout_ms", callback=generic_save), "ms", fixed_width=box_width),
+        ],
+    ]
 
     return [
         [
@@ -125,69 +246,14 @@ def overlaysetting(self):
                     [
                         _TR("ovlEnable"),
                         (QWidget(), 0),
-                        right_layout(D_getsimpleswitch(ovl.CONFIG, "enable", callback=lambda x: (ovl.CONFIG.update({"enable": int(x)}), save_overlay_config()))),
+                        create_switch_row(ovl.CONFIG, "enable", callback=lambda x: (ovl.CONFIG.update({"enable": int(x)}), save_overlay_config())),
                     ],
                     [
-                        _TR("ovlTextColor"),
-                        D_getcolorbutton(self, ovl.CONFIG, "_text_rgb", callback=lambda _: update_color_with_opacity(self, "text_color", "_text_rgb", "_text_alpha")),
+                        "Auto",
                         (QWidget(), 0),
-                        _TR("ovlTextOpacity"),
-                        functools.partial(create_opacity_slider_generic, self, "text_color", "_text_rgb", "_text_alpha"),
+                        create_auto_switch,
                     ],
-                    [
-                        _TR("ovlStrokeColor"),
-                        D_getcolorbutton(self, ovl.CONFIG, "_stroke_rgb", callback=lambda _: update_color_with_opacity(self, "stroke_color", "_stroke_rgb", "_stroke_alpha")),
-                        (QWidget(), 0),
-                        _TR("ovlTextOpacity"),
-                        functools.partial(create_opacity_slider_generic, self, "stroke_color", "_stroke_rgb", "_stroke_alpha"),
-                    ],
-                    [
-                        _TR("ovlBackColor"),
-                        D_getcolorbutton(self, ovl.CONFIG, "_bg_rgb", callback=lambda _: update_color_with_opacity(self, "background_color", "_bg_rgb", "_bg_alpha")),
-                        (QWidget(), 0),
-                        _TR("ovlTextOpacity"),
-                        functools.partial(create_opacity_slider_generic, self, "background_color", "_bg_rgb", "_bg_alpha"),
-                    ],
-                    [
-                        _TR("ovlStrokeWidth"),
-                        (QWidget(), 0),
-                        right_layout(D_getspinbox(0, 10, ovl.CONFIG, "stroke_width", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
-                    ],
-                    [
-                        _TR("ovlBoxExpansion"),
-                        (QWidget(), 0),
-                        right_layout(D_getspinbox(0, 50, ovl.CONFIG, "box_expansion", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
-                    ],
-                    [
-                        _TR("ovlTextSizeMin"),
-                        (QWidget(), 0),
-                        right_layout(D_getspinbox(1, 100, ovl.CONFIG, "min_font_size", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
-                    ],
-                    [
-                        _TR("ovlTextSizeMax"),
-                        (QWidget(), 0),
-                        right_layout(D_getspinbox(1, 200, ovl.CONFIG, "max_font_size", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
-                    ],
-                    [
-                        _TR("ovlTextFont"),
-                        (QWidget(), 0),
-                        right_layout(create_font_combo, "", fixed_width=box_width),
-                    ],
-                    [
-                        _TR("ovlPaddingH"),
-                        (QWidget(), 0),
-                        right_layout(D_getspinbox(0, 50, ovl.CONFIG, "horizontal_padding", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
-                    ],
-                    [
-                        _TR("ovlPaddingV"),
-                        (QWidget(), 0),
-                        right_layout(D_getspinbox(0, 50, ovl.CONFIG, "vertical_padding", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
-                    ],
-                    [
-                        _TR("ovlTimeout"),
-                        (QWidget(), 0),
-                        right_layout(D_getspinbox(100, 60000, ovl.CONFIG, "timeout_ms", callback=generic_save), "ms", fixed_width=box_width),
-                    ]
+                    *manual_rows,
                 ]
             )
         ]
