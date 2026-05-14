@@ -1,9 +1,9 @@
 # LunaTranslator
 
-[![Build](https://github.com/bonelag/PatchTranslator/actions/workflows/build.yml/badge.svg)](https://github.com/bonelag/PatchTranslator/actions/workflows/build.yml)
-[![Release](https://github.com/bonelag/PatchTranslator/actions/workflows/release.yml/badge.svg)](https://github.com/bonelag/PatchTranslator/actions/workflows/release.yml)
-[![License](https://img.shields.io/github/license/bonelag/PatchTranslator)](LICENSE)
-[![Latest Release](https://img.shields.io/github/v/release/bonelag/PatchTranslator)](https://github.com/bonelag/PatchTranslator/releases)
+[![Build](https://github.com/bonelag/STranslator/actions/workflows/build.yml/badge.svg)](https://github.com/bonelag/STranslator/actions/workflows/build.yml)
+[![Release](https://github.com/bonelag/STranslator/actions/workflows/release.yml/badge.svg)](https://github.com/bonelag/STranslator/actions/workflows/release.yml)
+[![License](https://img.shields.io/github/license/bonelag/STranslator)](LICENSE)
+[![Latest Release](https://img.shields.io/github/v/release/bonelag/STranslator)](https://github.com/bonelag/STranslator/releases)
 
 Game text translation toolkit for Windows with HOOK/OCR/Clipboard input, multi-engine translation, TTS, dictionary integration, and rich UI customization.
 
