@@ -20,7 +20,6 @@
     "剪贴板": "Área de Transferência",
     "阿里": "Alibaba",
     "自动朗读": "Leitura Automática",
-    "缩放时禁用窗口大小调整": "Desativar Redimensionamento da Janela ao Maximizar",
     "导出sqlite文件为json文件": "Exportar SQLite para Arquivo JSON",
     "图标": "Ícone",
     "指示詞": "Demonstrativos",
@@ -213,7 +212,6 @@
     "处理": "Processando",
     "波兰语": "Polonês",
     "窗口置顶": "Janela Sempre no Topo",
-    "仅": "Apenas",
     "任务栏中显示": "Exibir na Barra de Tarefas",
     "移除": "Remover",
     "复制特殊码": "Copiar Código Hook",
@@ -923,5 +921,8 @@
     "图片路径": "Caminho da imagem",
     "如果等待时间过长，可能是被Windows Defender或其他杀毒软件拦截。": "Se o tempo de espera for muito longo, pode ser que o Windows Defender ou outro antivírus esteja bloqueando.",
     "请[添加Windows Defender排除项](WDADDEXCEPTION)，或检查其他相关设置后重试。": "Por favor, [adicione uma exclusão do Windows Defender](WDADDEXCEPTION) ou verifique outras configurações relacionadas e tente novamente.",
-    "禁用其他全部快捷键": "Desativar todos os outros atalhos de teclado"
+    "禁用其他全部快捷键": "Desativar todos os outros atalhos de teclado",
+    "背景图片": "Imagem de fundo",
+    "仅HOOK模式下可用": "Disponível apenas no modo HOOK.",
+    "仅OCR模式下可用": "Disponível apenas no modo OCR."
 }

@@ -10,6 +10,7 @@ from myutils.config import (
     savehook_new_list,
     findgameuidofpath,
     _TR,
+    uid2gamepath,
 )
 from main import checkintegrity
 from textio.textsource.textsourcebase import basetext
@@ -152,6 +153,7 @@ class texthook(basetext):
         self.multiselectedcollectorlock = threading.Lock()
         self.lastflushtime = 0
         self.runonce_line = ""
+        self.emugameid = None
         gobject.base.autoswitchgameuid = False
         self.initdll()
         self.delaycollectallselectedoutput()
@@ -269,7 +271,9 @@ class texthook(basetext):
         uid = find_or_create_uid_for_emu(savehook_new_list, _id, self.gameuid, title)
         if uid not in savehook_new_list:
             savehook_new_list.insert(0, uid)
+        uid2gamepath[uid] = uid2gamepath[self.gameuid]
         self.pids[uid] = self.pids[self.gameuid]
+        self.emugameid = _id
         self.gameuid = uid
 
     def i18nQueryCallback(self, querytext: str):
@@ -373,6 +377,7 @@ class texthook(basetext):
     def start(self, hwnd, pids, gamepath, gameuid, autostart=False):
         for pid in pids:
             self.waitend(pid)
+        self.emugameid = None
         gobject.base.hwnd = hwnd
         self.gameuid = gameuid
         self.pids[gameuid] = []

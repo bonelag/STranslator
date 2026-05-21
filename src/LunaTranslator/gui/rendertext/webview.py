@@ -61,9 +61,20 @@ class somecommon(dataget):
         self.verticalhorizontal(globalconfig.get("verticalhorizontal", False))
         self.setwordhoveruse(globalconfig["word_hover_action_usewb2"])
         self.set_word_hover_show_word_info(globalconfig["word_hover_show_word_info"])
+        self.setbackgroudimageandopt()
         self.refreshcontent()
 
     # js api
+    def setbackgroudimageandopt(self):
+        use = not globalconfig.get("backtransparent", False)
+        opt = globalconfig.get("transparent_pic", 0) / 100 if use else 0
+        url = quote(
+            globalconfig.get(
+                "backgroundpic", "https://image.lunatranslator.org/luna.jpg"
+            )
+        )
+        self.debugeval('setbackgroudimageandopt(  "{}",{});'.format(url, opt))
+
     def sethovercolor(self, color):
         self.debugeval('sethovercolor("{}")'.format(self._qcolor_as_rgba(color)))
 
@@ -403,7 +414,9 @@ class TextBrowser(WebviewWidget, somecommon):
         )
 
     def __init__(self, parent) -> None:
-        super().__init__(parent, transp=True, loadext=globalconfig.get("webviewLoadExt", True))
+        super().__init__(
+            parent, transp=True, loadext=globalconfig.get("webviewLoadExt", True)
+        )
         # webview2当会执行alert之类的弹窗js时，若qt窗口不可视，会卡住
         self.setMouseTracking(globalconfig.get("dragable", True))
         nexti = self.add_menu(0, lambda: _TR("查词"), self.menusearchword)
@@ -468,7 +481,9 @@ class TextBrowser(WebviewWidget, somecommon):
         self._switchcursor.connect(self.switchcursor)
         self.window().isDragging.connect(self._isDragging)
         self._isDragging.connect(
-            lambda b: self.setselectable(False if b else globalconfig.get("selectable", True))
+            lambda b: self.setselectable(
+                False if b else globalconfig.get("selectable", True)
+            )
         )
         self.loadex()
         self.__tooltipshelper.connect(lambda f: f())
@@ -610,7 +625,9 @@ class TextBrowser(WebviewWidget, somecommon):
             tooltipswidget.hidetooltipwindow()
 
     def calllunaMouseMove(self, x, y):
-        if globalconfig.get("selectable", True) and globalconfig.get("selectableEx", False):
+        if globalconfig.get("selectable", True) and globalconfig.get(
+            "selectableEx", False
+        ):
             return
         pos = self.parsexyaspos(x, y)
         event = QMouseEvent(

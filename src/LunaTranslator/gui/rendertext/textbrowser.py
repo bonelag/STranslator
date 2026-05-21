@@ -7,7 +7,9 @@ from gui.rendertext.texttype import (
     SpecialColor,
     FenciColor,
 )
-import gobject, functools, importlib, NativeUtils
+from myutils.proxy import getproxy
+from myutils.wrapper import threader
+import gobject, functools, importlib, NativeUtils, uuid, requests
 from traceback import print_exc
 from gui.rendertext.textbrowser_imp.base import base
 from gui.dynalang import LAction
@@ -191,7 +193,9 @@ class QTextBrowser_1(QTextEdit):
         return super().focusOutEvent(e)
 
     def mouseMoveEvent(self, ev: QMouseEvent):
-        if globalconfig.get("selectable", True) and globalconfig.get("selectableEx", False):
+        if globalconfig.get("selectable", True) and globalconfig.get(
+            "selectableEx", False
+        ):
             tooltipswidget.hidetooltipwindow()
             return super().mouseMoveEvent(ev)
         for label in self.p.searchmasklabels:
@@ -263,10 +267,84 @@ class TextAreaBack(QLabel):
         return super().paintEvent(a0)
 
 
+class BackImage(QWidget):
+
+    def __init__(self, p):
+        super().__init__(p)
+        self.backimage = QPixmap()
+        self.backimageopt = 0
+        self.resizedimage = QPixmap()
+        self.__last = None
+        self.__caches: "dict[str, QPixmap]" = {}
+
+    def maybedownloadimage(self, url: str):
+        if not url:
+            return QPixmap()
+        if not (
+            url.lower().startswith("https://") or url.lower().startswith("http://")
+        ):
+            return QPixmap(url)
+        try:
+            if self.__caches.get(url):
+                return self.__caches.get(url)
+
+            req = requests.get(url, proxies=getproxy()).content
+            img = QImage()
+            img.loadFromData(req)
+            img = QPixmap.fromImage(img)
+            self.__caches[url] = img
+            return img
+        except:
+            print_exc()
+            return QPixmap()
+
+    def setimage(self, url: str, opt):
+        if self.__last != (opt == 0, url):
+            self.backimage = self.maybedownloadimage(url if opt else None)
+            self.resizedimage = QPixmap()
+            self.updateresizedimage()
+        self.__last = (opt == 0, url)
+        self.backimageopt = opt
+        self.update()
+
+    def updateresizedimage(self):
+        if (
+            (self.backimage.isNull())
+            or (self.backimage.width() == 0)
+            or (self.backimage.height() == 0)
+        ):
+            self.resizedimage = QPixmap()
+        else:
+            if self.resizedimage.width() == self.width():
+                return
+            r = self.devicePixelRatioF()
+            self.backimage.setDevicePixelRatio(r)
+            imgr = self.backimage.width() / self.backimage.height()
+            self.resizedimage = self.backimage.scaled(
+                int(self.width() * r),
+                int(self.width() / imgr * r),
+                Qt.AspectRatioMode.KeepAspectRatioByExpanding,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+
+    def resizeEvent(self, a0):
+        self.updateresizedimage()
+        return super().resizeEvent(a0)
+
+    def paintEvent(self, _):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        painter.setOpacity(self.backimageopt)
+        painter.drawTiledPixmap(0, 0, self.width(), self.height(), self.resizedimage)
+
+
 class TextBrowser(QWidget, dataget):
     contentsChanged = pyqtSignal(QSize)
     dropfilecallback = pyqtSignal(str)
     _padding = 5
+
+    __setimagehelper = pyqtSignal(str, float, uuid.UUID)
 
     def wheelEvent(self, a0: QWheelEvent):
         gobject.base.wheelhistory.emit(-1 if a0.angleDelta().y() > 0 else 1)
@@ -309,7 +387,7 @@ class TextBrowser(QWidget, dataget):
         self.drawtextarealabel.resize(event.size())
         self.toplabel2.resize(event.size())
         self.masklabel.resize(event.size())
-
+        self.backimagelabel.resize(event.size())
         self.__makeborder(event.size())
 
     def menunoselect(self, p):
@@ -397,6 +475,9 @@ class TextBrowser(QWidget, dataget):
         self.cleared = True
 
         self.setAcceptDrops(True)
+        self.backimagelabel = BackImage(self)
+        self.backimagelabel.setMouseTracking(True)
+        self.backimagelabel.move(0, 0)
         self.drawtextarealabel = TextAreaBack(self)
         self.drawtextarealabel.setMouseTracking(True)
         self.showtextareabackground(globalconfig.get("text_area_background", False))
@@ -416,11 +497,9 @@ class TextBrowser(QWidget, dataget):
         self.tranparentcolor.setAlpha(0)
         self.textbrowser.setTextColor(self.tranparentcolor)
 
-        self.textbrowser.setStyleSheet(
-            "border-width: 0;\
+        self.textbrowser.setStyleSheet("border-width: 0;\
             border-style: outset;\
-            background-color: rgba(0, 0, 0, 0)"
-        )
+            background-color: rgba(0, 0, 0, 0)")
 
         self.textcursor = self.textbrowser.textCursor()
         self.textbrowser.setVerticalScrollBarPolicy(
@@ -448,6 +527,10 @@ class TextBrowser(QWidget, dataget):
         # self.masklabel_bottom.setStyleSheet('background-color:red')
         self.resets1()
         self.setselectable(globalconfig.get("selectable", True))
+
+        self.__setimage_sig = None
+        self.__setimagehelper.connect(self.____setimagehelper__)
+        self.setbackgroudimageandopt()
 
     def resets1(self):
         self.currenttype = globalconfig["rendertext_using_internal"]["textbrowser"]
@@ -1242,3 +1325,21 @@ class TextBrowser(QWidget, dataget):
                 _.setStyleSheet("background-color: " + color)
             except:
                 pass
+
+    def setbackgroudimageandopt(self):
+        use = not globalconfig.get("backtransparent", False)
+        self.__setimage_sig = __setimage_sig = uuid.uuid4()
+        opt = globalconfig.get("transparent_pic", 0) / 100 if use else 0
+        self.__setimagehelper.emit(
+            globalconfig.get(
+                "backgroundpic", "https://image.lunatranslator.org/luna.jpg"
+            ),
+            opt,
+            __setimage_sig,
+        )
+
+    @threader
+    def ____setimagehelper__(self, url: str, opt, sig):
+        if sig != self.__setimage_sig:
+            return
+        self.backimagelabel.setimage(url, opt)

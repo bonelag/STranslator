@@ -36,6 +36,7 @@ from gui.dynalang import (
     LToolButton,
 )
 
+
 def load_specific_icon_size(ico_path):
     reader = QImageReader(ico_path)
     total_images = reader.imageCount()
@@ -2474,8 +2475,11 @@ def makegroupingrid(args: dict):
         else:
             setattr(parent, groupname, group)
     if _type == "grid":
-        grid = QGridLayout(group)
-        automakegrid(grid, lis)
+        if hiderows:
+            grid = VisGridLayout(group)
+        else:
+            grid = QGridLayout(group)
+        automakegrid(grid, lis, hiderows=hiderows)
         if internallayoutname:
             setattr(parent, internallayoutname, grid)
     elif _type == "form":
@@ -2486,7 +2490,7 @@ def makegroupingrid(args: dict):
     return group
 
 
-def automakegrid(grid: QGridLayout, lis, savelist=None):
+def automakegrid(grid: "VisGridLayout", lis, savelist=None, hiderows=None):
     save = isinstance(savelist, list)
     maxl = 1
     linecolss = []
@@ -2554,6 +2558,8 @@ def automakegrid(grid: QGridLayout, lis, savelist=None):
         if save:
             savelist.append(ll)
         grid.setRowMinimumHeight(nowr, 25)
+        if nowr in hiderows if hiderows else []:
+            grid.setRowVisible(nowr, False)
 
 
 def makegrid(grid=None, savelist=None, savelay=None, delay=False):
@@ -2980,6 +2986,7 @@ def getsimplepatheditor(
     dirorfile=False,
     clearable=True,
     clearset=None,
+    editable=False,
 ):
     if multi:
         lay = listediterline(
@@ -2991,7 +2998,7 @@ def getsimplepatheditor(
         lay = QHBoxLayout()
         lay.setContentsMargins(0, 0, 0, 0)
         e = QLineEdit(text)
-        e.setReadOnly(True)
+        e.setReadOnly(not editable)
         if icons:
             bu = getIconButton(icon=icons[0])
             if clearable:
@@ -3013,12 +3020,15 @@ def getsimplepatheditor(
             callback,
         )
         bu.clicked.connect(_cb)
+        if callback:
+            e.textEdited.connect(callback)
         lay.addWidget(e)
         lay.addWidget(bu)
         if clearable:
 
             def __(_cb, _e: QLineEdit, t):
-                _cb("")
+                if _cb:
+                    _cb("")
                 if not t:
                     _e.setText("")
                 elif callable(t):
@@ -3280,6 +3290,7 @@ class IconButton(LPushButton):
         if icon == "luna":
             return getExeIcon(getcurrexe(), icon=False, large=True)
         return load_specific_icon_size(icon)
+
     def setIconStr(self, icon: str):
         self._setIconStr(icon)
         self.__seticon()
@@ -3375,9 +3386,10 @@ class FQLineEdit(QLineEdit):
 class VisGridLayout(QGridLayout):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.ws = {}
+        self.ws: "dict[QWidget, list[tuple[QWidget, int, int, int, int]]]" = {}
         self.wr = {}
         self.rv = {}
+        self.rowheight = {}
 
     def rowVisible(self, r) -> bool:
         return self.rv.get(r, True)
@@ -3387,7 +3399,12 @@ class VisGridLayout(QGridLayout):
             return 0
         return super().rowCount()
 
-    def addWidget(self, w, r, c, rs=1, cs=1):
+    def addLayout(self, l: QLayout, r, c, rs=1, cs=1):
+        w = QWidget()
+        w.setLayout(l)
+        self.addWidget(w, r, c, rs, cs)
+
+    def addWidget(self, w: QWidget, r, c, rs=1, cs=1):
         if r not in self.ws:
             self.ws[r] = []
         self.wr[w] = r
@@ -3398,6 +3415,12 @@ class VisGridLayout(QGridLayout):
         if row_index not in self.ws:
             return
         self.rv[row_index] = visible
+        if not visible:
+            self.rowheight[row_index] = self.rowMinimumHeight(row_index)
+            self.setRowMinimumHeight(row_index, 0)
+        else:
+            self.setRowMinimumHeight(row_index, self.rowheight.get(row_index, 0))
+
         for w, r, c, rs, cs in self.ws[row_index]:
             if not visible:
                 if self.wr.get(w) != r:

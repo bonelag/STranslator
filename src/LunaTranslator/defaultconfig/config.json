@@ -416,8 +416,6 @@
     "kanarate": 0.5,
     "rawtextcolor": "#000000",
     "backcolor": "#ffaaff",
-    "transparent": 10,
-    "transparent_EX": true,
     "backcolor_tool": "#ffaaff",
     "transparent_tool": 50,
     "isshowhira": true,
@@ -523,7 +521,6 @@
             "noundict",
             "fix",
             "langdu",
-            "mousetransbutton",
             "backtransbutton",
             "locktoolsbutton",
             "gamepad_new",
@@ -1340,10 +1337,6 @@
             "use": true,
             "name": "weblio"
         },
-        "goo": {
-            "use": true,
-            "name": "goo"
-        },
         "chatgptlike": {
             "canGetUrl": false,
             "use": false,
@@ -1536,6 +1529,7 @@
     "theme3": "PyQtDarkTheme",
     "useopenlink": false,
     "useopenlinklink1": [
+        "https://www.google.com/search?q={word}",
         "https://jpdb.io/search?q={word}",
         "https://www.weblio.jp/content/{word}"
     ],

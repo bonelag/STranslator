@@ -143,6 +143,7 @@ class BASEOBJECT(QObject):
     showandsolvesig = pyqtSignal(str, str)
     selecthookbuttonstatus = pyqtSignal(bool)
     backtransparentstatus = pyqtSignal(bool)
+    backtransparentstatus_2 = pyqtSignal(bool)
     show_fany_switch = pyqtSignal(bool)
     show_original_switch = pyqtSignal(bool)
     sourceswitchs = pyqtSignal(str, bool)
@@ -241,7 +242,9 @@ class BASEOBJECT(QObject):
         hist = self.history.get_offset(offset)
         if not hist:
             return
+        self.currenttext = self.currenttext_raw = hist.text
         self.translation_ui.displayraw1.emit(hist.text, False, False)
+        first = True
         for classname, trans in hist.trans.items():
             try:
                 displayreskwargs = dict(
@@ -251,12 +254,20 @@ class BASEOBJECT(QObject):
                     klass=classname,
                 )
                 self.translation_ui.displayres.emit(displayreskwargs)
+                if first:
+                    first = False
+                    self.currenttranslate = self.currenttranslate_1 = ""
+                if len(self.currenttranslate):
+                    self.currenttranslate += "\n"
+                self.currenttranslate += trans
+                self.currenttranslate_1 = trans
             except:
                 print_exc()
 
     def __init__(self) -> None:
         super().__init__()
         self.initsignals()
+        self.willshutdown = False
         self.history = HistoryHelper()
         self.currentisdark = None
         self.currentmica = None
@@ -314,7 +325,9 @@ class BASEOBJECT(QObject):
                 gobject.base.portconflict.emit("端口冲突")
 
     @threader
-    def ttsautoforward(self):
+    def ttsautoforward(self, isforce):
+        if isforce:
+            return
         if not globalconfig["ttsautoforward"]:
             return
         if not globalconfig["autorun"]:
@@ -1703,7 +1716,10 @@ class BASEOBJECT(QObject):
         elif msg == 5:
             magpie_config.update(json.loads(cast(value2, c_wchar_p).value))
         elif msg == -1:
-            saveallconfig()
+            self.willshutdown = True
+            _ = NativeUtils.SimpleCreateMutex("LUNASAVECONFIGUPDATE")
+            if windows.GetLastError() != windows.ERROR_ALREADY_EXISTS:
+                saveallconfig()
 
     def _dowhenwndcreate(self, obj):
         if not isinstance(obj, QWidget):
