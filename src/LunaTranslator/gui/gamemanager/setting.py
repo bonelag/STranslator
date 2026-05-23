@@ -619,8 +619,8 @@ class dialog_setting_game_internal(QWidget):
     @tryprint
     def __refresh(self):
         _filename, _ = os.path.splitext(os.path.basename(uid2gamepath[self.gameuid]))
-        sqlitef = gobject.gettranslationrecorddir(
-            "{}_{}.sqlite".format(_filename, self.gameuid)
+        sqlitef = gobject.getcachedir(
+            "translation_record/{}_{}.sqlite".format(_filename, self.gameuid)
         )
         if not os.path.exists(sqlitef):
             return
@@ -1479,15 +1479,45 @@ class dialog_setting_game_internal(QWidget):
         box = NQGroupBox()
         settinglayout = LFormLayout(box)
         formLayout.addRow(box)
+        __label = getsmalllabel("重新启动后生效")()
+        __label.hide()
+        settinglayout.addRow(
+            "延迟注入_(ms)",
+            getboxlayout(
+                [
+                    getspinbox(
+                        0,
+                        1000000,
+                        savehook_new_data[gameuid],
+                        "inserthooktimeout",
+                        default=500,
+                        callback=lambda _: __label.show(),
+                    ),
+                    __label,
+                ]
+            ),
+        )
+        __label2 = getsmalllabel("重新启动后生效")()
+        __label2.hide()
         settinglayout.addRow(
             "Win32通用钩子",
-            getsimpleswitch(
-                savehook_new_data[gameuid],
-                "insertpchooks_string",
-                callback=lambda _: (
-                    gobject.base.textsource.InsertPCHooks() if _ else None
-                ),
-                default=False,
+            getboxlayout(
+                [
+                    getsimpleswitch(
+                        savehook_new_data[gameuid],
+                        "insertpchooks_string",
+                        callback=lambda _: (
+                            (
+                                gobject.base.textsource.InsertPCHooks()
+                                if _
+                                else __label2.show()
+                            )
+                        ),
+                        default=False,
+                    ),
+                    "",
+                    __label2,
+                ]
             ),
         )
         if "needinserthookcode" not in savehook_new_data[gameuid]:
@@ -1499,6 +1529,16 @@ class dialog_setting_game_internal(QWidget):
                 savehook_new_data[gameuid]["needinserthookcode"],
             ),
         )
+        if savehook_new_data[gameuid].get("removeforeverhook"):
+
+            settinglayout.addRow(
+                "移除且总是移除",
+                listediterline(
+                    "移除且总是移除",
+                    savehook_new_data[gameuid]["removeforeverhook"],
+                    specialklass=embeddisabler,
+                ),
+            )
         box = NQGroupBox()
         settinglayout = LFormLayout(box)
         formLayout.addRow(box)
@@ -1555,25 +1595,6 @@ class dialog_setting_game_internal(QWidget):
                 default=globalconfig["maxHistorySize"],
             ),
         )
-        formLayout2.addRow(
-            "延迟注入_(ms)",
-            getspinbox(
-                0, 1000000, savehook_new_data[gameuid], "inserthooktimeout", default=250
-            ),
-        )
-        if savehook_new_data[gameuid].get("removeforeverhook"):
-            box = NQGroupBox()
-            settinglayout = LFormLayout(box)
-
-            settinglayout.addRow(
-                "移除且总是移除",
-                listediterline(
-                    "移除且总是移除",
-                    savehook_new_data[gameuid]["removeforeverhook"],
-                    specialklass=embeddisabler,
-                ),
-            )
-            formLayout.addRow(box)
 
     def gethooktab(self, gameuid):
         _w = QWidget()

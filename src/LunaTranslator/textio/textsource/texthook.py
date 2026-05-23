@@ -2,7 +2,7 @@ import threading
 import re, os
 import time, gobject, windows
 from qtsymbols import *
-import zhconv, functools
+import zhconv, functools, shutil
 from myutils.config import (
     globalconfig,
     savehook_new_data,
@@ -386,14 +386,19 @@ class texthook(basetext):
         _filename, _ = os.path.splitext(os.path.basename(gamepath))
         if savehook_new_data[gameuid].get("emugameid"):
             _filename = savehook_new_data[gameuid].get("emugameid")
-        sqlitef = gobject.gettranslationrecorddir(
-            "{}_{}.sqlite".format(_filename, gameuid)
+        try:
+            shutil.move("translation_record", gobject.getcachedir("translation_record"))
+        except:
+            pass
+        sqlitef = gobject.getcachedir(
+            "translation_record/{}_{}.sqlite".format(_filename, gameuid)
         )
+
         self.startsql(sqlitef)
         if autostart:
             autostarthookcode = self.hconfig.get("hook", [])
             needinserthookcode = self.hconfig.get("needinserthookcode", [])
-            injecttimeout = self.hconfig.get("inserthooktimeout", 250) / 1000
+            injecttimeout = self.hconfig.get("inserthooktimeout", 500) / 1000
         else:
             injecttimeout = 0
             autostarthookcode = []
