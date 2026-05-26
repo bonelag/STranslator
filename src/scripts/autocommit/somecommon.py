@@ -22,7 +22,7 @@ def get_original_git_show(commit_hash):
 def call_llm_api(prompt: str, api_key: str, api_url: str, model: str):
 
     headers = {"Content-Type": "application/json", "Authorization": f"Bearer {api_key}"}
-    print(prompt)
+    print(prompt[:1000000])
     data = {
         "model": model,
         "messages": [
@@ -30,7 +30,7 @@ def call_llm_api(prompt: str, api_key: str, api_url: str, model: str):
                 "role": "system",
                 "content": "You are a professional Git commit message generator assistant. You need to generate concise commit messages based on code changes.",
             },
-            {"role": "user", "content": prompt},
+            {"role": "user", "content": prompt[:1000000]},
         ],
         "temperature": 0,
         "max_tokens": 300,

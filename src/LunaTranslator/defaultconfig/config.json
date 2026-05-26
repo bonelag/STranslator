@@ -13,8 +13,6 @@
         "webviewLoadExt": true
     },
     "multihookmergeby": "\n",
-    "read_raw": true,
-    "read_trans": false,
     "disappear_delay": 5,
     "network": 1,
     "useextrahtml": false,
@@ -387,7 +385,6 @@
     "ocr_stable_sim2_v2": 0.95,
     "ocr_diff_sim_v2": 0.95,
     "ocr_text_diff": 3,
-    "autorun": true,
     "fontsize": 16.0,
     "fontsizeori": 16.0,
     "localeswitchmethod": 0,
@@ -408,26 +405,16 @@
     "fonttype": "",
     "fonttype2": "",
     "hira_vis_type": 0,
-    "word_hover_show_word_info": false,
-    "word_hover_action_usewb2": false,
     "min_auto_height": 0,
     "iskongxin": true,
-    "isshowrawtext": true,
     "kanarate": 0.5,
     "rawtextcolor": "#000000",
     "backcolor": "#ffaaff",
     "backcolor_tool": "#ffaaff",
     "transparent_tool": 50,
-    "isshowhira": true,
     "hidetools": false,
     "locktools": true,
     "locktoolsEx": false,
-    "showfanyisource": false,
-    "showfanyi": true,
-    "autoread": false,
-    "ttsnointerrupt": false,
-    "ttsautoforward": false,
-    "show_fenci": true,
     "jiamingcolor": "black",
     "ankiconnect": {
         "host": "127.0.0.1",
@@ -461,8 +448,6 @@
         600
     ],
     "global_namemap2": [],
-    "settingfontsize": 12,
-    "settingfontbold": false,
     "buttoncolor": "#2e2eff",
     "buttoncolor_1": "#ff03f2",
     "ocrrangecolor": "#000000",
@@ -471,7 +456,7 @@
         "layout": "updown",
         "textColor": "#000000",
         "textbackColor": "#ffffffff",
-        "borderColor": "#00000000",
+        "borderColor": "#10000000",
         "borderColor2": "#ff000000",
         "borderW": 1,
         "itemw": 130,
@@ -502,10 +487,6 @@
         400
     ],
     "hovercolor": "#80000000",
-    "anki_Orientation_V": true,
-    "gamemanageruseversion": 0,
-    "gamemanager_integrated_internal_layout": 2,
-    "profiles_index": 0,
     "toolbutton": {
         "rank2": [
             "luna",
@@ -808,7 +789,6 @@
         }
     },
     "disappear_delay_tool": 1,
-    "proxy": "127.0.0.1:7890",
     "cixingcolor": {
         "形容詞": "aliceblue",
         "形状詞": "antiquewhite",
@@ -1575,9 +1555,6 @@
             "use": false
         }
     },
-    "verticalocr": 2,
-    "ocrmergelines": true,
-    "ocrmergelines_distance": 0.4,
     "ocr": {
         "selfbuild": {
             "use": false,
@@ -1936,10 +1913,9 @@
             "use": false,
             "type": "offline",
             "color": "blue",
-            "name": "Sakura大模型",
+            "name": "特定离线翻译模型",
             "is_gpt_like": true,
-            "useproxy": false,
-            "useEx": "useExfunction"
+            "useproxy": false
         },
         "realtime_edit": {
             "use": false,
@@ -1966,7 +1942,6 @@
     "maxlength": 10000,
     "srclang4": "auto",
     "tgtlang4": "zh",
-    "showatcenter": true,
     "ocr_auto_method_v2": "period",
     "ocr_interval": 1.5,
     "ocr_trigger_delay": 0,
@@ -1993,10 +1968,8 @@
         }
     ],
     "proxies": null,
-    "viewlistpos": 0,
     "wordlabel": [],
     "wordlabel2": [],
-    "getWordFallbackClipboard": true,
     "noundictconfig_ex": [],
     "toppest_translator": null,
     "extraLangs": []

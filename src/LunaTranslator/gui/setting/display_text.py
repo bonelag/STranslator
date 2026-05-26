@@ -464,6 +464,7 @@ def _showhidefy(self):
         globalconfig,
         "showfanyi",
         callback=functools.partial(__changeuibuttonstate2, self),
+        default=True,
     )
     gobject.base.show_fany_switch.connect(btn.setChecked)
     return btn
@@ -474,6 +475,7 @@ def __xianshi(self):
         globalconfig,
         "isshowrawtext",
         callback=functools.partial(__changeuibuttonstate, self),
+        default=True,
     )
     gobject.base.show_original_switch.connect(btn.setChecked)
     return btn
@@ -619,6 +621,7 @@ def xianshigrid_style(self):
                             globalconfig,
                             "showatcenter",
                             callback=gobject.base.translation_ui.translate_text.showatcenter,
+                            default=True,
                         ),
                         "",
                         "显示错误信息",
@@ -641,6 +644,7 @@ def xianshigrid_style(self):
                             globalconfig,
                             "showfanyisource",
                             callback=gobject.base.translation_ui.translate_text.showhidename,
+                            default=False,
                         ),
                         "",
                         "固定翻译显示顺序",

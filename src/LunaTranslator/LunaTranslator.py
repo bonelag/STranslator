@@ -226,7 +226,7 @@ class BASEOBJECT(QObject):
 
     @property
     def currentread(self):
-        context = (globalconfig["read_raw"], globalconfig["read_trans"])
+        context = (globalconfig.get("read_raw", True), globalconfig.get("read_trans", False))
         if context == (False, False):
             return None
         elif context == (True, False):
@@ -328,9 +328,9 @@ class BASEOBJECT(QObject):
     def ttsautoforward(self, isforce):
         if isforce:
             return
-        if not globalconfig["ttsautoforward"]:
+        if not globalconfig.get("ttsautoforward", False):
             return
-        if not globalconfig["autorun"]:
+        if not globalconfig.get("autorun", True):
             return
         windows.SetForegroundWindow(self.hwnd)
         time.sleep(0.001)
@@ -471,8 +471,8 @@ class BASEOBJECT(QObject):
 
     def parsehira(self, text: str):
         need = (
-            globalconfig["isshowhira"]
-            or globalconfig["show_fenci"]
+            globalconfig.get("isshowhira", True)
+            or globalconfig.get("show_fenci", True)
             or self.translation_ui.translate_text.textbrowser._clickhovershow
         )
         if not need:
@@ -526,7 +526,7 @@ class BASEOBJECT(QObject):
                     return
 
     def maybeneedtranslateshowhidetranslate(self):
-        if globalconfig["showfanyi"]:
+        if globalconfig.get("showfanyi", True):
             self.textgetmethod(self.currenttext_raw, is_auto_run=False, isRefresh=True)
             self.translation_ui.translate_text.showhidetranslate(True)
         else:
@@ -636,7 +636,7 @@ class BASEOBJECT(QObject):
                 self.currenttranslate = ""
                 self.currenttranslate_1 = ""
                 self.latest_is_origin = True
-                if globalconfig["read_raw"]:
+                if globalconfig.get("read_raw", True):
                     self.readcurrent()
                 self.dispatchoutputer(text, True)
 
@@ -660,7 +660,7 @@ class BASEOBJECT(QObject):
                 pass
         self.maybesetedittext(text)
 
-        if not waitforresultcallback and not globalconfig["showfanyi"]:
+        if not waitforresultcallback and not globalconfig.get("showfanyi", True):
             return _showrawfunction()
 
         text_solved, optimization_params = self.solvebeforetrans(text)
@@ -928,7 +928,7 @@ class BASEOBJECT(QObject):
                 self.latest_is_origin = False
                 if not waitforresultcallback:
                     if (
-                        globalconfig["read_trans"]
+                        globalconfig.get("read_trans", False)
                         and (not read_trans_once_check)
                         and (
                             (globalconfig["toppest_translator"] == classname)
@@ -1028,7 +1028,7 @@ class BASEOBJECT(QObject):
 
     @threader
     def readcurrent(self, force=False):
-        if (not force) and (not globalconfig["autoread"]):
+        if (not force) and (not globalconfig.get("autoread", False)):
             return
         text1 = self.currentread
         if not text1:
@@ -1565,11 +1565,11 @@ class BASEOBJECT(QObject):
         fontstr = lambda fsize: "font:{fontsize}pt  {fonttype}; {bold}".format(
             fontsize=fsize,
             fonttype=globalconfig["settingfonttype"],
-            bold=("", "font-weight: bold;")[globalconfig["settingfontbold"]],
+            bold=("", "font-weight: bold;")[globalconfig.get("settingfontbold", False)],
         )
-        style += "*{{  {}  }}".format(fontstr(globalconfig["settingfontsize"]))
+        style += "*{{  {}  }}".format(fontstr(globalconfig.get("settingfontsize", 12)))
         style += "QListWidget {{ {} }}".format(
-            fontstr(globalconfig["settingfontsize"] + 2)
+            fontstr(globalconfig.get("settingfontsize", 12) + 2)
         )
         style += "QGroupBox{ background:transparent; } QGroupBox#notitle{ margin-top:0px;} QGroupBox#notitle:title {margin-top: 0px;}"
         style += "#NOBORDER{border:0;margin:0;padding:0;}"
@@ -1577,8 +1577,8 @@ class BASEOBJECT(QObject):
             self.commonstylebase.setStyleSheet(style)
         font = QFont()
         font.setFamily(globalconfig["settingfonttype"])
-        font.setPointSizeF(globalconfig["settingfontsize"])
-        font.setBold(globalconfig["settingfontbold"])
+        font.setPointSizeF(globalconfig.get("settingfontsize", 12))
+        font.setBold(globalconfig.get("settingfontbold", False))
         if QApplication.instance().font() != font:
             QApplication.instance().setFont(font)
 
@@ -1720,6 +1720,25 @@ class BASEOBJECT(QObject):
             _ = NativeUtils.SimpleCreateMutex("LUNASAVECONFIGUPDATE")
             if windows.GetLastError() != windows.ERROR_ALREADY_EXISTS:
                 saveallconfig()
+        elif msg == 6:
+            strings = {
+                "Message_ScalingFailed": "缩放失败",
+                "Message_CreateFenceFailed": "当前显卡不支持 ID3D11Device5::CreateFence，请尝试切换显卡或更新驱动。",
+                "Message_CaptureFailed": "无法捕获这个窗口，请尝试切换捕获方式。",
+                "Message_ScalingFailedGeneral": "详情请参阅日志。",
+                "Message_BannedInWindowedMode": "不支持窗口模式缩放这个窗口。",
+                "Message_InvalidCropping": "无法应用自定义裁剪。",
+                "Message_LowIntegrityLevel": "Magpie 需要以管理员身份运行才能缩放这个窗口。",
+                "Message_Maximized": "已禁止缩放最大化或全屏的窗口。你可以在主页里更改这个行为。",
+                "Message_InvalidSourceWindow": "不支持缩放这个窗口。",
+                "Message_WindowedDesktopDuplication": "Desktop Duplication 捕获不支持窗口模式缩放。",
+                "Message_Windowed3DGameMode": "3D 游戏模式下不支持窗口模式缩放。",
+                "Message_TouchSupport": "启用触控支持失败。",
+                "Message_InvalidScalingMode": "缩放模式无效。",
+            }
+            title = strings.get(cast(value1, c_wchar_p).value, "")
+            msg = strings.get(cast(value2, c_wchar_p).value, "")
+            self.RichMessageBox.emit((_TR(title if title else "错误"), _TR(msg)))
 
     def _dowhenwndcreate(self, obj):
         if not isinstance(obj, QWidget):

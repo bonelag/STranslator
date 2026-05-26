@@ -729,8 +729,8 @@ class TranslatorWindow(resizableframeless):
                 "automodebutton",
                 buttonfunctions(
                     clicked=self.changeTranslateMode,
-                    iconstate=lambda: globalconfig["autorun"],
-                    colorstate=lambda: globalconfig["autorun"],
+                    iconstate=lambda: globalconfig.get("autorun", True),
+                    colorstate=lambda: globalconfig.get("autorun", True),
                 ),
             ),
             ("setting", lambda: gobject.base.settin_ui_showsignal.emit()),
@@ -744,16 +744,16 @@ class TranslatorWindow(resizableframeless):
                 "showraw",
                 buttonfunctions(
                     clicked=self.changeshowhideraw,
-                    iconstate=lambda: globalconfig["isshowrawtext"],
-                    colorstate=lambda: globalconfig["isshowrawtext"],
+                    iconstate=lambda: globalconfig.get("isshowrawtext", True),
+                    colorstate=lambda: globalconfig.get("isshowrawtext", True),
                 ),
             ),
             (
                 "showtrans",
                 buttonfunctions(
                     clicked=self.changeshowhidetrans,
-                    iconstate=lambda: globalconfig["showfanyi"],
-                    colorstate=lambda: globalconfig["showfanyi"],
+                    iconstate=lambda: globalconfig.get("showfanyi", True),
+                    colorstate=lambda: globalconfig.get("showfanyi", True),
                 ),
             ),
             ("history", lambda: gobject.base.transhis.showsignal.emit()),
@@ -1549,28 +1549,12 @@ class TranslatorWindow(resizableframeless):
             if (not btn.isVisible()) and (btn.reflayout is not None):
                 usegeo = self.mousetranscheckrect
             if usegeo.contains(cursor_pos):
-
-                windows.SetWindowLong(
-                    hwnd,
-                    windows.GWL_EXSTYLE,
-                    windows.GetWindowLong(hwnd, windows.GWL_EXSTYLE)
-                    & ~windows.WS_EX_TRANSPARENT,
-                )
+                windows.MouseTrans.unset(hwnd)
             else:
-                windows.SetWindowLong(
-                    hwnd,
-                    windows.GWL_EXSTYLE,
-                    windows.GetWindowLong(hwnd, windows.GWL_EXSTYLE)
-                    | windows.WS_EX_TRANSPARENT,
-                )
+                windows.MouseTrans.set(hwnd)
             time.sleep(0.1)
         # 结束时取消穿透(可能以快捷键终止)
-        windows.SetWindowLong(
-            hwnd,
-            windows.GWL_EXSTYLE,
-            windows.GetWindowLong(hwnd, windows.GWL_EXSTYLE)
-            & ~windows.WS_EX_TRANSPARENT,
-        )
+        windows.MouseTrans.unset(hwnd)
 
     def changemousetransparentstate(self, idx):
         if idx == 0:
@@ -1613,7 +1597,7 @@ class TranslatorWindow(resizableframeless):
         gobject.base.hwnd = hwnd if pid != _pid else None
 
     def changeshowhideraw(self):
-        isshowrawtext = not globalconfig["isshowrawtext"]
+        isshowrawtext = not globalconfig.get("isshowrawtext", True)
         globalconfig["isshowrawtext"] = isshowrawtext
         gobject.base.show_original_switch.emit(isshowrawtext)
         self.refreshtoolicon()
@@ -1621,16 +1605,18 @@ class TranslatorWindow(resizableframeless):
         gobject.base.fenyinsettings.emit(isshowrawtext)
 
     def changeshowhidetrans(self):
-        globalconfig["showfanyi"] = not globalconfig["showfanyi"]
-        gobject.base.show_fany_switch.emit(globalconfig["showfanyi"])
+        _ = not globalconfig.get("showfanyi", True)
+        globalconfig["showfanyi"] = _
+        gobject.base.show_fany_switch.emit(_)
         self.refreshtoolicon()
         gobject.base.maybeneedtranslateshowhidetranslate()
 
     def changeTranslateMode(self):
-        globalconfig["autorun"] = not globalconfig["autorun"]
+        _ = not globalconfig.get("autorun", True)
+        globalconfig["autorun"] = _
         self.refreshtoolicon()
         if gobject.base.textsource:
-            gobject.base.textsource.runornot(globalconfig["autorun"])
+            gobject.base.textsource.runornot(_)
 
     def changetoolslockstateEx(self):
         globalconfig["locktoolsEx"] = True

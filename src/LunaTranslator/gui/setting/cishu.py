@@ -355,7 +355,7 @@ def setTabcishu_l(self):
                 type="grid",
                 parent=self,
                 name="fenyinsettings",
-                enable=globalconfig["isshowrawtext"],
+                enable=globalconfig.get("isshowrawtext", True),
                 grid=(
                     [
                         "显示注音",
@@ -363,6 +363,7 @@ def setTabcishu_l(self):
                             globalconfig,
                             "isshowhira",
                             callback=gobject.base.translation_ui.translate_text.showhidert,
+                            default=True,
                         ),
                         D_getcolorbutton(
                             self,
@@ -406,6 +407,7 @@ def setTabcishu_l(self):
                                     _
                                 ),
                             ),
+                            default=True,
                         ),
                         D_getIconButton(
                             icon="fa.paint-brush",
@@ -438,6 +440,7 @@ def setTabcishu_l(self):
                                                 _
                                             ),
                                         ),
+                                        default=False,
                                     ),
                                     D_getIconButton(
                                         callback=lambda: tooltipssetting(self),
