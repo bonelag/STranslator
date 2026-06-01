@@ -16,6 +16,7 @@ from datetime import datetime
 import requests
 from myutils.utils import (
     useExCheck,
+    stringfyerror,
     makehtml,
     selectdebugfile,
     splittranslatortypes,
@@ -815,9 +816,13 @@ def copy_move_not_exists(src: str, dst: str, lost_copy: bool = False):
         if rel_path != ".":
             os.makedirs(target_dir, exist_ok=True)
         for file in files:
-            src_file = os.path.join(root, file)
-            dst_file = os.path.join(target_dir, file)
-            if os.path.exists(dst_file) and not dst_file.lower().endswith(".exe"):
+            src_file = os.path.normpath(os.path.join(root, file))
+            dst_file = os.path.normpath(os.path.join(target_dir, file))
+            if (
+                src_file != dst_file
+                and os.path.exists(dst_file)
+                and not dst_file.lower().endswith(".exe")
+            ):
                 continue
             if lost_copy:
                 shutil.copy2(src_file, dst_file)
@@ -1301,8 +1306,16 @@ class llamalisttable(LTableView):
             )
 
     def initialize_(
-        self, p: "llamalistQwidget_internal", parnet: llamalistQwidget, res: dict
+        self,
+        p: "llamalistQwidget_internal",
+        parnet: llamalistQwidget,
+        res: "dict|Exception",
     ):
+        if isinstance(res, Exception):
+            p.link.setText(stringfyerror(res) + "<br>" + p.t)
+            p.refs.show()
+            return
+
         p.setCurrentIndex(1)
         parnet.newversionlabel.setText(makehtml(res["html_url"], res["tag_name"][1:]))
         cudas = {}
@@ -1321,6 +1334,7 @@ class llamalisttable(LTableView):
                 continue
             arch = maich.groups()[0]
             size = format_bytes(_["size"])
+            _arch = arch
             if arch == "sycl":
                 arch += " (Intel GPU/NPU)"
             elif arch.startswith("cuda"):
@@ -1333,8 +1347,8 @@ class llamalisttable(LTableView):
             item.setData(_["browser_download_url"], Qt.ItemDataRole.UserRole + 2)
             item.setData(res["tag_name"], Qt.ItemDataRole.UserRole + 10)
             item.setData(_["digest"], Qt.ItemDataRole.UserRole + 4)
-            item.setData(cudas.get(arch, ""), Qt.ItemDataRole.UserRole + 3)
-            item.setData(cudasdigest.get(arch, ""), Qt.ItemDataRole.UserRole + 30)
+            item.setData(cudas.get(_arch, ""), Qt.ItemDataRole.UserRole + 3)
+            item.setData(cudasdigest.get(_arch, ""), Qt.ItemDataRole.UserRole + 30)
             item3 = LStandardItem()
             item2 = QStandardItem(size)
             item2.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -1395,7 +1409,7 @@ class llamalisttable(LTableView):
 
 
 class llamalistQwidget_internal(QStackedWidget):
-    initialize = pyqtSignal(dict)
+    initialize = pyqtSignal(object)
 
     def __init__(self, parnet: llamalistQwidget):
         super().__init__()
@@ -1407,28 +1421,37 @@ class llamalistQwidget_internal(QStackedWidget):
         self.addWidget(table)
         l1 = QVBoxLayout(w)
         hb = QHBoxLayout()
-        refs = IconButton("fa.refresh", tips="刷新")
-        refs.setFixedSize(QSize(100, 100))
-        hb.addWidget(refs)
+        self.refs = IconButton("fa.refresh", tips="刷新")
+        self.refs.setFixedSize(QSize(75, 75))
+        self.refs.hide()
+        hb.addWidget(self.refs)
         hb.setAlignment(Qt.AlignmentFlag.AlignCenter)
         l1.setAlignment(Qt.AlignmentFlag.AlignCenter)
         l1.addLayout(hb)
-        refs.clicked.connect(self.firstshow)
-        link = LinkLabel()
-        l1.addWidget(link)
-        link.setText(makehtml("https://github.com/ggml-org/llama.cpp/releases"))
+        self.refs.clicked.connect(self.firstshow)
+        self.link = LinkLabel()
+        self.link.setWordWrap(True)
+        self.link.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
+        )
+        l1.addWidget(self.link)
+        self.t = makehtml("https://github.com/ggml-org/llama.cpp/releases")
+        self.link.setText("loading...")
         self.loadonce = True
         self.initialize.connect(functools.partial(table.initialize_, self, parnet))
         self.firstshow()
 
     @threader
     def firstshow(self, _=None):
-        res = requests.get(
-            "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest",
-            proxies=getproxy(),
-        ).json()
-        # 必须检查一下是不是有效的相应
-        if not "tag_name" in res:
+        try:
+            res = requests.get(
+                "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest",
+                proxies=getproxy(),
+            ).json()
+            if not "tag_name" in res:
+                raise Exception(res)
+        except Exception as e:
+            self.initialize.emit(e)
             return
         if not self.loadonce:
             return
