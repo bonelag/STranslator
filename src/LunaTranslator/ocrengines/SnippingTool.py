@@ -34,6 +34,22 @@ def selectdir():
     return path
 
 
+def clean_unused_files(d):
+    if not os.path.isdir(d):
+        return
+    for item in os.listdir(d):
+        item_path = os.path.join(d, item)
+        if item in flist:
+            continue
+        try:
+            if os.path.isdir(item_path):
+                shutil.rmtree(item_path)
+            else:
+                os.remove(item_path)
+        except Exception:
+            pass
+
+
 class question(QWidget):
     def downloadofficial(self):
         headers = {
@@ -116,6 +132,7 @@ class question(QWidget):
             ff.extractall(gobject.getcachedir(), collect)
         if not checkdir(cachedir):
             raise Exception()
+        clean_unused_files(cachedir)
 
     installsucc = pyqtSignal(bool, str)
 
@@ -167,6 +184,7 @@ class question(QWidget):
             zipf.extractall(gobject.getcachedir())
         if not checkdir(cachedir):
             raise Exception()
+        clean_unused_files(cachedir)
 
     def _installsucc(self, succ, failreason):
         self.formLayout.setRowVisible(0, succ)
@@ -238,9 +256,6 @@ class OcrLineBoundingBox(Structure):
         ("y4", c_float),
     ]
 
-
-#   if ( (unsigned int)(a2[1] - 50) > 0x26DE || (unsigned int)(a2[2] - 50) > 0x26DE )
-#     return 3i64;
 class OCR(baseocr):
     required_image_format = QImage
     required_mini_height = 50
@@ -252,7 +267,13 @@ class OCR(baseocr):
         if not dir_:
             raise Exception(_TR("未安装"))
         if dir_ != cachedir:
-            shutil.copytree(dir_, cachedir)
+            os.makedirs(cachedir, exist_ok=True)
+            for f in flist:
+                src_file = os.path.join(dir_, f)
+                dst_file = os.path.join(cachedir, f)
+                if os.path.isfile(src_file):
+                    shutil.copy2(src_file, dst_file)
+        clean_unused_files(cachedir)
         self.lock = threading.Lock()
         pipename = "\\\\.\\Pipe\\" + str(uuid.uuid4())
         waitsignal = str(uuid.uuid4())

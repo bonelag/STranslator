@@ -1,4 +1,4 @@
-import re, inspect, unicodedata
+import re, inspect
 from traceback import print_exc
 from collections import Counter
 import gobject
@@ -28,8 +28,8 @@ def dedump(line, args):
 def _2_f(line, args):
     if len(line) == 0:
         return
-    keepnodump = args["保持非重复字符"]
-    times = args["重复次数(若为1则自动分析去重)"]
+    keepnodump = args.get("保持非重复字符", False)
+    times = args.get("重复次数(若为1则自动分析去重)", 1)
 
     if times >= 2:
         guesstimes = times
@@ -311,13 +311,10 @@ def _mypostloader(line, file, module):
     return _.POSTSOLVE(line)
 
 
-def fulltohalf(text: str, args: dict) -> str:
-    return unicodedata.normalize(args.get("type", "NFKC"), text)
-
-
 processfunctions = {
     "_remove_symbo": _remove_symbo,
     "_2": _2_f,
+    "fulltohalf": _2_f,
     "_3": _3_f,
     "_3_2": _3_2,
     "_10": _10_f,
@@ -340,18 +337,7 @@ processfunctions = {
     "lines_threshold_1": lines_threshold,
     "_11": _mypostloader,
     "stringreplace": stringreplace,
-    "fulltohalf": fulltohalf,
 }
-
-for k in postprocessconfig:
-    if k not in globalconfig["postprocess_rank"]:
-        globalconfig["postprocess_rank"].append(k)
-_bads = []
-for _ in globalconfig["postprocess_rank"]:
-    if _ not in processfunctions:
-        _bads.append(_)
-for _ in _bads:
-    globalconfig["postprocess_rank"].remove(_)
 
 
 def POSTSOLVE(line: str, isEx=False, isFromHook=False, useAll=False) -> str:

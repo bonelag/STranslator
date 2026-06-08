@@ -165,7 +165,7 @@ int updatewmain(int argc, wchar_t *argv[])
     // MessageBoxW(NULL, text_update_succ.c_str(), text_succ.c_str(), MB_SYSTEMMODAL);
     if (needreload)
     {
-        ShellExecute(0, L"open", L".\\LunaTranslator.exe", NULL, NULL, SW_SHOWNORMAL);
+        ShellExecute(0, L"open", L".\\STranslator.exe", NULL, NULL, SW_SHOWNORMAL);
     }
     return 0;
 }

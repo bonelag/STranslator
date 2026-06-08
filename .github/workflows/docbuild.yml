@@ -1,10 +1,12 @@
-name: _
+name: build docs
 
 on:
-    push:
-        paths: [ 'docs/**', '.github/workflows/docbuild.yml']
-    pull_request:
-        paths: [ 'docs/**', '.github/workflows/docbuild.yml']
+  workflow_dispatch:
+  push:
+    branches: [ main ]
+    paths: [ 'docs/**', '.github/workflows/docbuild.yml']
+  pull_request:
+    paths: [ 'docs/**', '.github/workflows/docbuild.yml']
 
 permissions:
   contents: read
@@ -19,19 +21,21 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@master
-        with: 
-          fetch-depth: '0'
-          ref: main
-      - run: |
-          cd docs
-      - uses: actions/setup-node@master
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
       - uses: actions/configure-pages@v4
       - run: |
           cd docs
-          npm install
+          export VITEPRESS_BASE=/PatchTranslator/
+          mkdir -p .vitepress/public
+          cp ../src/files/static/logo.png .vitepress/public/logo.png
+          npm ci
           npm run docs:build
           cp index.html .vitepress/dist
           cd ..
@@ -39,6 +43,7 @@ jobs:
         with:
           path: docs/.vitepress/dist
   deploy:
+    if: github.event_name != 'pull_request'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

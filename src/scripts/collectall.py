@@ -65,9 +65,9 @@ def copycheck(src, tgt):
 
 # copycheck(os.path.join(launch, "LunaTranslator.exe"), targetdir)
 # copycheck(os.path.join(launch, "LunaTranslator_admin.exe"), targetdir)
-with open(os.path.join(targetdir, "LunaTranslator_debug.bat"), "w") as ff:
+with open(os.path.join(targetdir, "STranslator_debug.bat"), "w") as ff:
     ff.write(
-        r""".\LunaTranslator.exe
+        r""".\STranslator.exe
 pause"""
     )
 # copycheck(os.path.join(launch, "LunaTranslator_admin.exe"), targetdir)
@@ -165,8 +165,8 @@ for f in collect:
 
 
 os.system(f"python scripts/createsigexe.py {arch} {target} {targetdir}")
-copycheck(f"{launch}/LunaTranslator.exe", targetdir)
-copycheck(f"{launch}/LunaTranslator_admin.exe", targetdir)
+copycheck(f"{launch}/STranslator.exe", targetdir)
+copycheck(f"{launch}/STranslator_admin.exe", targetdir)
 
 
 target = os.path.basename(targetdir)

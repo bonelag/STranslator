@@ -62,8 +62,8 @@ myfiles = [
     "files/LunaHook/LunaHost64.dll",
     "files/LunaSubprocess32.exe",
     "files/LunaSubprocess64.exe",
-    "LunaTranslator.exe",
-    "LunaTranslator_admin.exe",
+    "STranslator.exe",
+    "STranslator_admin.exe",
 ]
 
 
@@ -98,6 +98,8 @@ def downloadmapie():
     )
     subprocess.run(f"7z x -y magpie.zip")
     os.chdir(rootDir)
+    if os.path.exists("files/Magpie"):
+        shutil.rmtree("files/Magpie")
     os.rename("scripts/temp/Magpie", "files/Magpie")
 
 
@@ -157,6 +159,8 @@ def downloadNtlea():
     subprocess.run(f"7z x -y {ntleaFile.split('/')[-1]} -ontlea")
 
     os.chdir(rootDir)
+    if os.path.exists("files/Locale/ntleas046_x64"):
+        shutil.rmtree("files/Locale/ntleas046_x64")
     os.makedirs("files/Locale/ntleas046_x64")
     shutil.copytree("scripts/temp/ntlea/x86", "files/Locale/ntleas046_x64/x86")
     shutil.copytree("scripts/temp/ntlea/x64", "files/Locale/ntleas046_x64/x64")
@@ -202,6 +206,8 @@ def downloadOCRModel():
         md5 = hashlib.md5(ff.read()).hexdigest()
     os.remove(f"jazhchten.zip")
     os.chdir("..")
+    if os.path.exists(md5):
+        shutil.rmtree(md5)
     os.rename(__, md5)
     os.chdir(rootDir)
 
@@ -286,6 +292,43 @@ def downloadalls(target):
 
 if __name__ == "__main__":
     os.chdir(rootDir)
+
+    # Convert PNG to ICO (Chỉ chạy khi không phải lệnh loadversion để tránh ảnh hưởng GITHUB_OUTPUT)
+    if len(sys.argv) > 1 and sys.argv[1] != "loadversion":
+        try:
+            png_path = os.path.join(rootDir, "files/static/logo.png")
+            ico_path = os.path.join(rootDir, "NativeImpl/exec/luna.ico")
+            if os.path.exists(png_path):
+                sys.stderr.write(f"Converting {png_path} to {ico_path}...\n")
+                with open(png_path, 'rb') as f:
+                    png_data = f.read()
+                w = int.from_bytes(png_data[16:20], byteorder='big')
+                h = int.from_bytes(png_data[20:24], byteorder='big')
+                w_byte = 0 if w >= 256 else w
+                h_byte = 0 if h >= 256 else h
+                
+                ico_header = bytearray([
+                    0, 0,
+                    1, 0,
+                    1, 0,
+                    w_byte,
+                    h_byte,
+                    0,
+                    0,
+                    1, 0,
+                    32, 0,
+                ])
+                png_size = len(png_data)
+                ico_header.extend(png_size.to_bytes(4, byteorder='little'))
+                ico_header.extend((22).to_bytes(4, byteorder='little'))
+                
+                os.makedirs(os.path.dirname(ico_path), exist_ok=True)
+                with open(ico_path, 'wb') as f:
+                    f.write(ico_header)
+                    f.write(png_data)
+                sys.stderr.write("Convert logo.png to luna.ico successful.\n")
+        except Exception as e:
+            sys.stderr.write(f"Failed to convert logo.png to luna.ico: {e}\n")
 
     if sys.argv[1] == "download":
         downloadalls(sys.argv[2] if len(sys.argv) >= 3 else "")

@@ -94,7 +94,7 @@ def doupdate():
 
     for _dir, _, _fs in os.walk(r".\cache\update"):
         for _f in _fs:
-            if _f.lower() == "lunatranslator.exe":
+            if _f.lower() == "stranslator.exe":
                 found = _dir
 
     texts: "list[str]" = [

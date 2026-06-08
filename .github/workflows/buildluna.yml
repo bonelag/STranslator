@@ -12,46 +12,13 @@ jobs:
     runs-on: windows-latest
     strategy:
       matrix:
-        include:  
-          - arch: x86
-            target: winxp
-          - arch: x86
-            target: win7
-            pythonversion: '3.7.9' 
-          - arch: x64
-            target: win7
-            pythonversion: '3.7.9' 
+        include:
           - arch: x64
             target: win10
             pythonversion: '3.13.13'  
     steps:
-      - uses: actions/checkout@v6
-      # - uses: microsoft/setup-msbuild@v2
-      - if: matrix.target == 'winxp'
-        run: |
-            Set-Location "C:\Program Files (x86)\Microsoft Visual Studio\Installer\"
-            $InstallPath = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise"
-            $componentsToAdd = @(
-              "Microsoft.VisualStudio.Component.WinXP"
-            )
-            [string]$workloadArgs = $componentsToAdd | ForEach-Object {" --add " +  $_}
-            $Arguments = ('/c', "vs_installer.exe", 'modify', '--installPath', "`"$InstallPath`"",$workloadArgs, '--quiet', '--norestart', '--nocache')
-            $process = Start-Process -FilePath cmd.exe -ArgumentList $Arguments -Wait -PassThru -WindowStyle Hidden
-            if ($process.ExitCode -eq 0)
-            {
-                Write-Host "components have been successfully added"
-                Get-ChildItem C:\ProgramData\Microsoft\VisualStudio\Packages\Microsoft.Windows.XPSupport.*
-            }
-            else
-            {
-                Write-Host "components were not installed"
-                exit 1
-            }
-      # - uses: GuillaumeFalourd/setup-windows10-sdk-action@v2
-      #   with:
-      #     sdk-version: 26100
-      - if: matrix.target != 'winxp'
-        uses: actions/setup-python@v6
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.pythonversion }}
           architecture: ${{ matrix.arch }}
@@ -66,7 +33,7 @@ jobs:
         run:  C:\hostedtoolcache\windows\Python\3.13.13\x64\python src/scripts/build_lunatranslator.py pyrt ${{ matrix.arch }} ${{ matrix.pythonversion }} ${{ matrix.target }}
       - run:  C:\hostedtoolcache\windows\Python\3.13.13\x64\python src/scripts/build_lunatranslator.py merge ${{ matrix.arch }} ${{ matrix.target }}
 
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@v4
         with:
           name: LunaTranslator_${{ matrix.arch }}_${{ matrix.target }}
           path: src/build/LunaTranslator_${{ matrix.arch }}_${{ matrix.target }}
@@ -74,3 +41,61 @@ jobs:
       # - uses: actions/attest-build-provenance@v2.2.0
       #   with:
       #       subject-path: src/build/LunaTranslator_${{ matrix.arch }}_${{ matrix.target }}
+
+  signandrepack:
+    runs-on: windows-latest
+    needs: [buildall]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+            path: build
+      - run: python src/scripts/build_lunatranslator.py exedlls
+
+      - name: Self-sign EXE/DLL (no third-party service)
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          # Mirror collect -> signed_exedlls to keep existing repack logic unchanged
+          Copy-Item -Path "collect" -Destination "signed_exedlls" -Recurse -Force
+
+          # Create temporary self-signed code-signing certificate
+          $cert = New-SelfSignedCertificate `
+            -Type CodeSigningCert `
+            -Subject "CN=LunaTranslator Self-Signed CI" `
+            -CertStoreLocation "Cert:\CurrentUser\My" `
+            -NotAfter (Get-Date).AddYears(2)
+
+          # Locate signtool from Windows SDK
+          $signtool = Get-ChildItem "C:\Program Files (x86)\Windows Kits\10\bin" -Recurse -Filter signtool.exe |
+            Where-Object { $_.FullName -match "\\x64\\signtool.exe$" } |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1 -ExpandProperty FullName
+
+          if (-not $signtool) {
+            throw "signtool.exe not found"
+          }
+
+          # Sign all .exe/.dll files in signed_exedlls
+          Get-ChildItem "signed_exedlls" -Recurse -File |
+            Where-Object { $_.Extension -in ".exe", ".dll" } |
+            ForEach-Object {
+              & $signtool sign /fd SHA256 /sha1 $cert.Thumbprint $_.FullName
+              if ($LASTEXITCODE -ne 0) {
+                throw "Failed signing $($_.FullName)"
+              }
+            }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed_exedlls
+          path: signed_exedlls
+
+      - run: python src/scripts/build_lunatranslator.py repack
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: signed
+          path: signed
+
