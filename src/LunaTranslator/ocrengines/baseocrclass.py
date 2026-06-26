@@ -6,7 +6,42 @@ import re, gobject, math, time
 from qtsymbols import *
 
 
-def _sort_text_lines(boxs, texts, vertical, space: str):
+def is_garbage_block(text: str, box4: tuple) -> bool:
+    t = text.strip()
+    if not t:
+        return True
+    
+    if box4:
+        w = box4[2] - box4[0]
+        h = box4[3] - box4[1]
+        
+        # Lọc nhiễu quá nhỏ (nhiễu pixel)
+        if w < 4 or h < 4:
+            return True
+            
+        # Lọc ký tự đơn lẻ khổng lồ (thường là logo/icon nhận diện nhầm thành 'O', '0', 'X', v.v.)
+        if len(t) == 1 and w > 60 and h > 60:
+            return True
+            
+        # Lọc logo/icon hình vuông hoặc tròn bị nhận diện nhầm thành 1 ký tự Latin/ASCII đơn lẻ
+        # (Ví dụ: logo Google 'G' hình vuông, các icon tròn...)
+        if len(t) == 1 and min(w, h) > 12:
+            if not any(u'\u4e00' <= c <= u'\u9fff' or u'\u3040' <= c <= u'\u30ff' or u'\uac00' <= c <= u'\ud7af' for c in t):
+                aspect_ratio = w / h if h > 0 else 0
+                if 0.7 <= aspect_ratio <= 1.4:
+                    return True
+            
+    # Lọc ký hiệu rác đứng riêng lẻ (độ dài <= 2 và không chứa bất kỳ chữ cái/chữ số/chữ CJK nào)
+    if len(t) <= 2:
+        pattern = r'[a-zA-Z0-9\u00c0-\u024f\u1e00-\u1eff\u0300-\u036f\u4e00-\u9fff\u3040-\u30ff\uac00-\ud7af]'
+        if not re.search(pattern, t):
+            return True
+            
+    return False
+
+
+
+def _group_text_lines(boxs, texts, vertical):
     if not boxs:
         return []
     mids_idx = 1 if not vertical else 0
@@ -49,6 +84,11 @@ def _sort_text_lines(boxs, texts, vertical, space: str):
 
     juhe.sort(key=lambda x: mids[x[0]][mids_idx], reverse=vertical)
 
+    return juhe
+
+
+def _sort_text_lines(boxs, texts, vertical, space: str):
+    juhe = _group_text_lines(boxs, texts, vertical)
     return [space.join([texts[idx] for idx in line]) for line in juhe]
 
 
@@ -187,7 +227,11 @@ class OCRResult:
         self.hasboxs = bool(boxs)
         self.blocks: "list[OCRBlock]" = []
         for i in range(len(texts)):
-            self.blocks.append(OCRBlock(texts[i], boxs[i] if boxs else None))
+            txt = texts[i]
+            bx = boxs[i] if boxs else None
+            temp_block = OCRBlock(txt, bx)
+            if not is_garbage_block(temp_block.text, temp_block.box4):
+                self.blocks.append(temp_block)
         self.isocrtranslate = isocrtranslate
 
         vertical = int(globalconfig.get("verticalocr", 2))
@@ -204,6 +248,10 @@ class OCRResult:
         if self.blocks and scale != 1:
             for block in self.blocks:
                 block.box = tuple(_ / scale for _ in block.box)
+        self.raw_lines = []
+        for block in self.blocks:
+            if block.box4:
+                self.raw_lines.append((block.box4, block.text))
         if globalconfig.get("ocrmergelines", True) and self.hasboxs:
             self.__nearmergeboxs(space)
 
@@ -353,7 +401,9 @@ class OCRResultParsed:
         engine=None,
         scale=1,
         timecost=None,
+        offset=(0, 0),
     ):
+        self.offset = offset
         self.timecost = timecost
         self.engine = engine
         self.error = error
@@ -371,14 +421,58 @@ class OCRResultParsed:
         if not self.result.hasboxs:
             textonly = "\n".join((_.text for _ in self.result.blocks))
         else:
-            textonly = "\n".join(
-                _sort_text_lines(
-                    list(_.box4 for _ in self.result.blocks),
-                    list(_.text for _ in self.result.blocks),
-                    self.result.vertical,
-                    self.space,
-                )
-            )
+            boxs = list(_.box4 for _ in self.result.blocks)
+            texts = list(_.text for _ in self.result.blocks)
+            juhe = _group_text_lines(boxs, texts, self.result.vertical)
+            lines = []
+            self._line_boxes = []
+            for grouped in juhe:
+                chunks = []
+                current = []
+                last_box = None
+                for idx in grouped:
+                    box = boxs[idx]
+                    if last_box:
+                        gap = box[0] - last_box[2] if not self.result.vertical else last_box[1] - box[3]
+                        limit = globalconfig["ocrmergelines_distance"] * min(
+                            min(last_box[2] - last_box[0], last_box[3] - last_box[1]),
+                            min(box[2] - box[0], box[3] - box[1]),
+                        )
+                        if gap > limit:
+                            chunks.append(current)
+                            current = []
+                    current.append(idx)
+                    last_box = box
+                if current:
+                    chunks.append(current)
+                for chunk in chunks:
+                    line_box = boxs[chunk[0]]
+                    for idx in chunk[1:]:
+                        line_box = _OCRBlockS.four_point_box_union(line_box, boxs[idx])
+                    x1 = line_box[0] + self.offset[0]
+                    y1 = line_box[1] + self.offset[1]
+                    w = line_box[2] - line_box[0]
+                    h = line_box[3] - line_box[1]
+                    line_text = self.space.join([texts[idx] for idx in chunk])
+                    
+                    self._line_boxes.append((x1, y1, w, h, line_text))
+                    if self.result.isocrtranslate:
+                        lines.append("[{:.0f} {:.0f}|{:.0f} {:.0f}] {}".format(x1, y1, w, h, line_text))
+                    else:
+                        lines.append("[#{}] {}".format(len(lines) + 1, line_text))
+            textonly = "\n".join(lines)
+            if not self.result.isocrtranslate:
+                try:
+                    import ovl
+                    ovl.set_pending_boxes(self._line_boxes)
+                except ImportError:
+                    try:
+                        from LunaTranslator import ovl
+                        ovl.set_pending_boxes(self._line_boxes)
+                    except Exception:
+                        pass
+                except Exception:
+                    pass
         if self.result.isocrtranslate:
             return textonly
         return self._100_f(textonly)
@@ -435,7 +529,7 @@ class baseocr(commonbase):
             raise e
         self.needinit = False
 
-    def _private_ocr(self, qimage: QImage):
+    def _private_ocr(self, qimage: QImage, offset=None):
         if self.needinit:
             self.level2init()
         try:
@@ -466,6 +560,7 @@ class baseocr(commonbase):
             if not image:
                 return OCRResultParsed()
             t = time.time()
+            self.offset = offset or (0, 0)
             result = self.multiapikeywrapper(self.ocr)(image)
             return OCRResultParsed(
                 result,
@@ -473,6 +568,7 @@ class baseocr(commonbase):
                 engine=self.typename,
                 scale=scale,
                 timecost=time.time() - t,
+                offset=self.offset,
             )
         except Exception as e:
             self.needinit = True

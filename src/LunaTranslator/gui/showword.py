@@ -1820,6 +1820,8 @@ class searchwordW(closeashidewindow):
         if not img:
             img = imageCut(0, rect[0][0], rect[0][1], rect[1][0], rect[1][1])
         result = ocr_run(img)
+        if globalconfig.get("debugocr", False):
+            return
         if result.error:
             return result.displayerror()
         gobject.base.ocr_search_word_save_image.emit(img)

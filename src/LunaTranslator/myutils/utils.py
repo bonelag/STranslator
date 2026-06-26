@@ -121,8 +121,10 @@ def useExCheck(fanyi, which=None, key="fanyi"):
     if not which:
         return True
     try:
-        if not getattr(importlib.import_module(which), useExfunction)():
-            return False
+        module = importlib.import_module(which)
+        if hasattr(module, useExfunction):
+            if not getattr(module, useExfunction)():
+                return False
     except:
         print_exc()
         pass

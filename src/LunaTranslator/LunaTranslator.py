@@ -77,6 +77,7 @@ from textio.textoutput.outputerbase import Base as outputerbase
 from myutils.updater import versioncheckthread
 from gui.qevent import DarkLightChangedEvent
 from gui.setting.translate import autostartllamacpp
+import ovl
 from collections import OrderedDict
 from itertools import islice
 
@@ -891,15 +892,25 @@ class BASEOBJECT(QObject):
                 and (not waitforresultcallback)
                 and (self.history.viewptr == -1)
             ):
+                parts = re.split(r"(?=\[\d+ \d+\|\d+ \d+\]|(?=\[#\d+\]))", res)
+                res_ui = '\n'.join(p.strip() for p in parts if p.strip())
+                res_ui = re.sub(r"\[-?\d+ -?\d+\|-?\d+ -?\d+\]\s*", "", res_ui)
+                res_ui = re.sub(r"^\[#\d+\]\s*", "", res_ui, flags=re.MULTILINE)
+
                 displayreskwargs = dict(
                     name=_TR(dynamicapiname(classname)),
                     color=TranslateColor(classname),
-                    res=res,
+                    res=res_ui,
                     iter_context=(iter_res_status, classname),
                     klass=classname,
                     is_auto_run=is_auto_run,
                 )
                 self.translation_ui.displayres.emit(displayreskwargs)
+                try:
+                    formatted = re.sub(r"(\[\d+ \d+\|\d+ \d+\])", r"\n\1", res).strip()
+                    self.safeinvokefunction.emit(partial(ovl.show_overlay, formatted))
+                except Exception:
+                    print_exc()
             if iter_res_status in (0, 2):  # 0为普通，1为iter，2为iter终止
 
                 if statusok:

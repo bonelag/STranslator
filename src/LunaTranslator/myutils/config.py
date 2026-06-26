@@ -72,6 +72,7 @@ ocrerrorfix = tryreadconfig("ocrerrorfix.json")
 globalconfig: "dict[str, dict[str, str|dict|list] | list[str|dict] | str]" = (
     tryreadconfig("config.json")
 )
+globalconfig["debugocr"] = False
 magpie_config = tryreadconfig_1("Magpie/config.json", pathold="magpie_config.json")
 postprocessconfig = tryreadconfig("postprocessconfig.json")
 
@@ -505,7 +506,12 @@ def saveallconfig(test=False):
         return
     _is_config_saving = True
     errorcollect = []
-    safesave(errorcollect, gobject.getconfig("config.json"), globalconfig)
+    debug_state = globalconfig.get("debugocr", False)
+    globalconfig["debugocr"] = False
+    try:
+        safesave(errorcollect, gobject.getconfig("config.json"), globalconfig)
+    finally:
+        globalconfig["debugocr"] = debug_state
     safesave(
         errorcollect, gobject.getconfig("postprocessconfig.json"), postprocessconfig
     )

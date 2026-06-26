@@ -106,7 +106,7 @@ def updatexx(self):
                 callback=lambda _: (
                     versionchecktask.put(_),
                     (
-                        self.aboutlayout.layout().setRowVisible(2, False)
+                        self.aboutlayout.layout().setRowVisible(6, False)
                         if not _
                         else ""
                     ),
@@ -116,6 +116,166 @@ def updatexx(self):
             getsmalllabel(""),
             getsmalllabel("最新版本"),
             createversionlabel,
+            "",
+        ]
+    )
+
+
+def debugocr_widget(self, callback):
+    return getboxlayout(
+        [
+            D_getsimpleswitch(
+                globalconfig,
+                "debugocr",
+                default=False,
+                callback=callback,
+            ),
+            "",
+        ]
+    )
+
+
+def debugocr_show_para_widget(self, callback):
+    return getboxlayout(
+        [
+            D_getsimpleswitch(
+                globalconfig,
+                "debugocr_show_para",
+                default=True,
+                callback=callback,
+            ),
+            "",
+        ]
+    )
+
+
+def debugocr_fill_para_widget(self):
+    return getboxlayout(
+        [
+            D_getsimpleswitch(
+                globalconfig,
+                "debugocr_fill_para",
+                default=False,
+            ),
+            "",
+        ]
+    )
+
+
+def debugocr_fill_text_para_widget(self):
+    return getboxlayout(
+        [
+            D_getsimpleswitch(
+                globalconfig,
+                "debugocr_fill_text_para",
+                default=False,
+            ),
+            "",
+        ]
+    )
+
+
+def debugocr_show_line_widget(self, callback):
+    return getboxlayout(
+        [
+            D_getsimpleswitch(
+                globalconfig,
+                "debugocr_show_line",
+                default=True,
+                callback=callback,
+            ),
+            "",
+        ]
+    )
+
+
+def debugocr_fill_line_widget(self):
+    return getboxlayout(
+        [
+            D_getsimpleswitch(
+                globalconfig,
+                "debugocr_fill_line",
+                default=False,
+            ),
+            "",
+        ]
+    )
+
+
+def debugocr_fill_text_line_widget(self):
+    return getboxlayout(
+        [
+            D_getsimpleswitch(
+                globalconfig,
+                "debugocr_fill_text_line",
+                default=False,
+            ),
+            "",
+        ]
+    )
+
+
+def debugocr_show_title_widget(self):
+    return getboxlayout(
+        [
+            D_getsimpleswitch(
+                globalconfig,
+                "debugocr_show_title",
+                default=True,
+            ),
+            "",
+        ]
+    )
+
+
+def debugocr_show_word_widget(self, callback):
+    return getboxlayout(
+        [
+            D_getsimpleswitch(
+                globalconfig,
+                "debugocr_show_word",
+                default=True,
+                callback=callback,
+            ),
+            "",
+        ]
+    )
+
+
+def debugocr_fill_word_widget(self):
+    return getboxlayout(
+        [
+            D_getsimpleswitch(
+                globalconfig,
+                "debugocr_fill_word",
+                default=False,
+            ),
+            "",
+        ]
+    )
+
+
+def debugocr_fill_text_word_widget(self):
+    return getboxlayout(
+        [
+            D_getsimpleswitch(
+                globalconfig,
+                "debugocr_fill_text_word",
+                default=False,
+            ),
+            "",
+        ]
+    )
+
+
+def debugocr_detect_font_widget(self):
+    return getboxlayout(
+        [
+            D_getsimpleswitch(
+                globalconfig,
+                "debugocr_detect_font",
+                default=False,
+            ),
             "",
         ]
     )
@@ -138,7 +298,7 @@ def _progresssignal4(
     downloadprogress.setValue(val)
     downloadprogress.setFormat(text)
     if (val or text) and globalconfig.get("autoupdate", True):
-        updatelayout.setRowVisible(2, True)
+        updatelayout.setRowVisible(6, True)
 
 
 class MDLabel(LinkLabel):
@@ -337,16 +497,99 @@ def setTab_about(self: QWidget, basel):
         )
         self.tab_widget.adjust_list_widget_width()
 
+    from language import Languages
+    lang = getlanguse()
+    if lang == Languages.Vietnamese:
+        lbl_debug = "Chế độ debug OCR"
+        lbl_para = "  └─ Hiện viền đoạn"
+        lbl_fill_para = "      └─ Đổ màu nền đoạn"
+        lbl_fill_text_para = "      └─ Đổ màu chữ đoạn"
+        lbl_line = "  └─ Hiện viền dòng"
+        lbl_fill_line = "      └─ Đổ màu nền dòng"
+        lbl_fill_text_line = "      └─ Đổ màu chữ dòng"
+        lbl_show_title = "      └─ Vẽ tiêu đề"
+        lbl_word = "  └─ Hiện viền chữ"
+        lbl_fill_word = "      └─ Đổ màu nền chữ"
+        lbl_fill_text_word = "      └─ Đổ màu chữ của chữ"
+        lbl_detect_font = "  └─ Hiện phông chữ"
+    else:
+        lbl_debug = "OCR Debug Mode"
+        lbl_para = "  └─ Show Paragraph Border"
+        lbl_fill_para = "      └─ Fill Paragraph Background"
+        lbl_fill_text_para = "      └─ Fill Paragraph Text"
+        lbl_line = "  └─ Show Line Border"
+        lbl_fill_line = "      └─ Fill Line Background"
+        lbl_fill_text_line = "      └─ Fill Line Text"
+        lbl_show_title = "      └─ Draw Title Border"
+        lbl_word = "  └─ Show Word Border"
+        lbl_fill_word = "      └─ Fill Word Background"
+        lbl_fill_text_word = "      └─ Fill Word Text"
+        lbl_detect_font = "  └─ Show Font Name"
+
+    def update_debug_rows_visibility(_=None):
+        if not hasattr(self, "aboutlayout"):
+            return
+        debug_on = globalconfig.get("debugocr", False)
+        layout = self.aboutlayout.layout()
+        if not debug_on:
+            for r in range(3, 14):
+                layout.setRowVisible(r, False)
+        else:
+            show_para = globalconfig.get("debugocr_show_para", True)
+            show_line = globalconfig.get("debugocr_show_line", True)
+            show_word = globalconfig.get("debugocr_show_word", True)
+            
+            layout.setRowVisible(3, True)
+            layout.setRowVisible(4, show_para)
+            layout.setRowVisible(5, show_para)
+            
+            layout.setRowVisible(6, True)
+            layout.setRowVisible(7, show_line)
+            layout.setRowVisible(8, show_line)
+            layout.setRowVisible(9, show_line)
+            
+            layout.setRowVisible(10, True)
+            layout.setRowVisible(11, show_word)
+            layout.setRowVisible(12, show_word)
+            
+            layout.setRowVisible(13, True)
+
+    hiderows_init = [14]
+    if not globalconfig.get("debugocr", False):
+        hiderows_init.extend(list(range(3, 14)))
+    else:
+        show_para = globalconfig.get("debugocr_show_para", True)
+        show_line = globalconfig.get("debugocr_show_line", True)
+        show_word = globalconfig.get("debugocr_show_word", True)
+        if not show_para:
+            hiderows_init.extend([4, 5])
+        if not show_line:
+            hiderows_init.extend([7, 8, 9])
+        if not show_word:
+            hiderows_init.extend([11, 12])
+
     makescrollgrid(
         [
             [
                 dict(
                     name="aboutlayout",
                     parent=self,
-                    hiderows=[2],
+                    hiderows=hiderows_init,
                     grid=[
                         ["UI语言", __delayloadlangs],
                         ["自动更新", functools.partial(updatexx, self)],
+                        [QLabel(lbl_debug), functools.partial(debugocr_widget, self, update_debug_rows_visibility)],
+                        [QLabel(lbl_para), functools.partial(debugocr_show_para_widget, self, update_debug_rows_visibility)],
+                        [QLabel(lbl_fill_para), functools.partial(debugocr_fill_para_widget, self)],
+                        [QLabel(lbl_fill_text_para), functools.partial(debugocr_fill_text_para_widget, self)],
+                        [QLabel(lbl_line), functools.partial(debugocr_show_line_widget, self, update_debug_rows_visibility)],
+                        [QLabel(lbl_fill_line), functools.partial(debugocr_fill_line_widget, self)],
+                        [QLabel(lbl_fill_text_line), functools.partial(debugocr_fill_text_line_widget, self)],
+                        [QLabel(lbl_show_title), functools.partial(debugocr_show_title_widget, self)],
+                        [QLabel(lbl_word), functools.partial(debugocr_show_word_widget, self, update_debug_rows_visibility)],
+                        [QLabel(lbl_fill_word), functools.partial(debugocr_fill_word_widget, self)],
+                        [QLabel(lbl_fill_text_word), functools.partial(debugocr_fill_text_word_widget, self)],
+                        [QLabel(lbl_detect_font), functools.partial(debugocr_detect_font_widget, self)],
                         [functools.partial(progress___, self)],
                     ],
                 ),

@@ -64,7 +64,7 @@ class rangemanger:
         imgr = imageCutEx(self.ref.hwnd, rect[0][0], rect[0][1], rect[1][0], rect[1][1])
         if imgr.isNull():
             return
-        result = ocr_run(imgr)
+        result = ocr_run(imgr, (rect[0][0], rect[0][1]))
         self.savelastimg = cvMat.fromQImage(imgr)
         self.savelastrecimg = self.savelastimg
         self.lastocrtime = time.time()
@@ -103,7 +103,7 @@ class rangemanger:
                 ok = False
         if ok == False:
             return
-        result = ocr_run(imgr)
+        result = ocr_run(imgr, (rect[0][0], rect[0][1]))
         t = result.textonly
         self.lastocrtime = time.time()
         sim = NativeUtils.distance(self.savelasttext, t)
@@ -286,6 +286,8 @@ class ocrtext(basetext):
             __text.append(_)
         if not __text:
             return
+        if globalconfig.get("debugocr", False):
+            return None
         text = "\n".join(_.textonly for _ in __text)
         if __text[0].result.isocrtranslate:
             gobject.base.displayinfomessage(text, "<notrans>")

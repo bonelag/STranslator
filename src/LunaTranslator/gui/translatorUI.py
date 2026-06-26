@@ -2,6 +2,7 @@ from qtsymbols import *
 import time, functools, threading, os, shutil, uuid
 from traceback import print_exc
 import windows, qtawesome, gobject, NativeUtils
+import ovl
 from myutils.wrapper import threader, tryprint
 from myutils.config import (
     globalconfig,
@@ -603,13 +604,26 @@ class TranslatorWindow(resizableframeless):
             if clear:
                 self.translate_text.clear()
             return
+
+        if texttype == TextType.Translate:
+            if ovl.CONFIG.get("show_in_main", 1) == 0:
+                if self._showing_overlay_warning:
+                    return
+                text = "Overlay is enabled, the translation will not appear here."
+                self._showing_overlay_warning = True
+            else:
+                self._showing_overlay_warning = False
         if iter_context:
             iter_res_status, iter_context_class = iter_context
         else:
             iter_res_status = 0
         if (not iter_res_status) and (not is_auto_run):
             # 流式输出时，不要每次都触发。
-            if not gobject.base.transhis.isVisible():
+            hidden_by_user = (globalconfig["showintab"] and self.isMinimized()) or (
+                (not globalconfig["showintab"]) and self.isHidden()
+            )
+            keep_hidden_for_overlay = bool(ovl.CONFIG.get("enable", 1)) and hidden_by_user
+            if (not keep_hidden_for_overlay) and (not gobject.base.transhis.isVisible()):
                 self.show_()
         if not raw:
             text = self.cleartext(text)
@@ -622,6 +636,22 @@ class TranslatorWindow(resizableframeless):
                 updateTranslate, clear, texttype, name, text, hira, color, klass
             )
         self.autodisappear()
+
+    def update_main_window_translation_display(self):
+        if ovl.CONFIG.get("show_in_main", 1) == 0:
+            self._showing_overlay_warning = False
+            self.showline(
+                clear=True,
+                text="Overlay is enabled, the translation will not appear here.",
+                texttype=TextType.Translate,
+                color=SpecialColor.DefaultColor
+            )
+        else:
+            self._showing_overlay_warning = False
+            self.showline(
+                clear=True,
+                text=None
+            )
 
     @property
     def isMouseHover(self):
@@ -678,12 +708,16 @@ class TranslatorWindow(resizableframeless):
     def ocr_do_function(self, rect, img=None):
         if not img:
             img = imageCut(0, rect[0][0], rect[0][1], rect[1][0], rect[1][1])
-        result = ocr_run(img)
+        result = ocr_run(img, (rect[0][0], rect[0][1]))
+        if globalconfig.get("debugocr", False):
+            return
         result = result.maybeerror()
         if result:
             gobject.base.textgetmethod(result, is_auto_run=False)
 
     def ocr_once_function(self):
+        ovl.close_all()
+
         def ocroncefunction(rect, img=None):
             self.ocr_once_follow_rect = rect
             self.ocr_do_function(rect, img)
@@ -1087,6 +1121,7 @@ class TranslatorWindow(resizableframeless):
         self.isbindedwindow = False
         self.setontopthread_lock = threading.Lock()
         self.ocr_once_follow_rect = None
+        self._showing_overlay_warning = False
 
     def displayglobaltooltip_f(self, string):
         QToolTip.showText(QCursor.pos(), string, self)
@@ -1765,6 +1800,7 @@ class TranslatorWindow(resizableframeless):
         if globalconfig["sourcestatus2"]["ocr"]["use"] == False:
             return
         self.showhidestate = False
+        ovl.close_all()
 
         rangeselct_function(functools.partial(self.afterrange, False))
 
@@ -1772,6 +1808,8 @@ class TranslatorWindow(resizableframeless):
         if globalconfig["sourcestatus2"]["ocr"]["use"] == False:
             return
         self.showhidestate = False
+        ovl.close_all()
+
         rangeselct_function(functools.partial(self.afterrange, True))
 
     @tryprint
