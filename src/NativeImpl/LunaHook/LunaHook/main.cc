@@ -380,6 +380,7 @@ void delayinsertNewHook(uint32_t em_address)
 }
 #ifdef _WIN64
 bool PCSX2_UserHook_delayinsert(uint32_t);
+bool RPCS3_UserHook_insert(HookParam hp, LPCSTR name, std::function<bool(HookParam hp, LPCSTR)>);
 #endif
 bool NewHook_2(HookParam hp, LPCSTR name, bool silentlyfail = false)
 {
@@ -427,6 +428,19 @@ bool NewHook_2(HookParam hp, LPCSTR name, bool silentlyfail = false)
 		{
 			delayinsertadd(hp, name);
 			return true;
+		}
+	}
+	else if (hp.jittype == JITTYPE::RPCS3)
+	{
+		if (hp.type & DIRECT_READ)
+		{
+			hp.address = RPCS3::emu_addr(hp.emu_addr);
+			return NewHook_1(hp, name, silentlyfail);
+		}
+		else
+		{
+			return RPCS3_UserHook_insert(hp, name, [=](auto _, auto _2)
+										 { return NewHook_1(_, _2, silentlyfail); });
 		}
 	}
 	else
@@ -491,6 +505,32 @@ std::string LoadResData(LPCWSTR pszResID, LPCWSTR _type)
 	GlobalFree(m_hMem);
 	FreeResource(lpRsrc);
 	return data;
+}
+bool is_memory_readable_ex(void *ptr, size_t size)
+{
+	if (!ptr)
+		return false;
+
+	MEMORY_BASIC_INFORMATION mbi = {};
+	SIZE_T result = VirtualQuery(ptr, &mbi, sizeof(mbi));
+
+	if (result == 0)
+	{
+		return false;
+	}
+	if (mbi.State != MEM_COMMIT)
+	{
+		return false;
+	}
+	DWORD readable_protections = PAGE_READONLY | PAGE_READWRITE |
+								 PAGE_EXECUTE_READ | PAGE_EXECUTE_READWRITE |
+								 PAGE_WRITECOPY | PAGE_EXECUTE_WRITECOPY;
+	if (mbi.Protect & PAGE_NOACCESS)
+	{
+		return false;
+	}
+	return (mbi.Protect & readable_protections) != 0 &&
+		   mbi.RegionSize >= size;
 }
 
 static bool _queryversion(WORD *_1, WORD *_2, WORD *_3, WORD *_4)

@@ -11,6 +11,7 @@
 |  | ULJM05740 | Starry☆Sky～in Summer～Portable |
 |  | ULJM05809 | Starry☆Sky～in Autumn～Portable |
 |  | ULJM05861 | Starry☆Sky～in Winter～Portable |
+|  | ULJM05746 | L@ve once |
 |  | ULJM06207 | Starry☆Sky～After Spring～Portable |
 |  | ULJM06208 | Starry☆Sky～After Summer～Portable |
 |  | ULJM06209 | Starry☆Sky～After Autumn～Portable |
@@ -88,7 +89,7 @@
 |  | ULJS00316 | ティンクル☆くるせいだーす GoGo! |
 |  | NPJH50808 | 明治東亰恋伽 |
 |  | NPJH50900 | 明治東亰恋伽 トワヰライト・キス |
-|  | ULJM06302 & ULJM06303 | 青春はじめました！ |
+|  | ULJM06302 & ULJM06303 & ULJM06307 | 青春はじめました！ |
 |  | ULJM06064 | アーメン・ノワール ポータブル |
 |  | ULJM05823 | デス・コネクション　ポータブル |
 |  | ULJM06289 | しらつゆの怪 |

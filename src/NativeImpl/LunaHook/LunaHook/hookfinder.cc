@@ -453,6 +453,9 @@ void inlinehookpipeline(std::vector<uintptr_t> &addresses)
 }
 uintptr_t getasbaddr(const HookParam &hp);
 
+#ifdef _WIN64
+void RPCS3_ADDR_MAP(FILE *f);
+#endif
 void _SearchForHooks(SearchParam spUser)
 {
 	static std::mutex m;
@@ -669,13 +672,19 @@ void _SearchForHooks(SearchParam spUser)
 		{
 			FILE *f;
 			fopen_s(&f, "JIT_ADDR_MAP_DUMP.txt", "w");
-			std::stringstream cache;
-			cache << std::hex;
-			for (auto addr : jitaddr2emuaddr)
+			if (jittypedefault == JITTYPE::RPCS3)
 			{
-				cache << addr.second.second << " => " << addr.first << "\n";
+#ifdef _WIN64
+				RPCS3_ADDR_MAP(f);
+#endif
 			}
-			fprintf(f, "%s", cache.str().c_str());
+			else
+			{
+				for (auto addr : jitaddr2emuaddr)
+				{
+					fprintf(f, "%x => %p\n", addr.second.second, addr.first);
+				}
+			}
 			fclose(f);
 			return;
 		}
@@ -737,6 +746,11 @@ void SearchForText(wchar_t *text, UINT codepage)
 				hp.emu_addr = addr - minaddr;
 				hp.jittype = JITTYPE::PCSX2;
 			}
+			else if (jittypedefault == JITTYPE::RPCS3)
+			{
+				hp.emu_addr = addr - minaddr;
+				hp.jittype = JITTYPE::RPCS3;
+			}
 			NewHook(hp, "Search");
 		}
 	};
@@ -745,6 +759,10 @@ void SearchForText(wchar_t *text, UINT codepage)
 	if (jittypedefault == JITTYPE::PCSX2)
 	{
 		minaddr = (uintptr_t)PCSX2Types::eeMem->Main;
+	}
+	else if (jittypedefault == JITTYPE::RPCS3)
+	{
+		minaddr = (uintptr_t)RPCS3::g_base_addr;
 	}
 #endif
 	GenerateHooks(minaddr, Util::SearchMemory(utf8Text, strlen(utf8Text), PAGE_READWRITE, minaddr), CODEC_UTF8);

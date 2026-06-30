@@ -183,8 +183,7 @@ uintptr_t queryrelativeret(HookParam &hp, uintptr_t retaddr)
 	re.insert(std::make_pair(retaddr, relative));
 	return relative;
 }
-
-uintptr_t jitgetaddr(hook_context *context, HookParam *hp, bool offset)
+static uintptr_t jitgetaddr(hook_context *context, HookParam *hp, bool offset)
 {
 	int off;
 	if (offset)
@@ -197,7 +196,12 @@ uintptr_t jitgetaddr(hook_context *context, HookParam *hp, bool offset)
 	case JITTYPE::PCSX2:
 		return PCSX2Types::argsof(off);
 	case JITTYPE::RPCS3:
-		return RPCS3::emu_arg(context)[off];
+	{
+		auto addr = RPCS3::emu_arg(context)[off];
+		if (!is_memory_readable_ex((void *)addr, 0x100))
+			return 0;
+		return addr;
+	}
 	case JITTYPE::VITA3K:
 		return VITA3K::emu_arg(context)[off];
 	case JITTYPE::YUZU:
@@ -490,7 +494,7 @@ void TextHook::Read()
 	auto buffer = (TextOutput_T *)local_buffer;
 	buffer->type = hp.type;
 	TextBuffer buff{buffer->data, 1};
-
+	bool is_emu_hook = (hp.jittype != JITTYPE::PC) && (hp.jittype != JITTYPE::UNITY);
 	auto savelast = new BYTE[PIPE_BUFFER_SIZE];
 	int lastlen = 0;
 	__try
@@ -533,7 +537,8 @@ void TextHook::Read()
 	__except (EXCEPTION_EXECUTE_HANDLER)
 	{
 		Msg::Log(TR[READ_ERROR], hp.name);
-		Clear();
+		if (!is_emu_hook)
+			Clear();
 	}
 }
 
