@@ -36,7 +36,9 @@ if target == "winxp":
 else:
     pyrt = f"pyrt/runtime"
 launch = f"NativeImpl/builds/_{arch}_{target}"
-targetdir = rf"build\LunaTranslator_{arch}_{target}"
+targetdir = rf"build\LunaTranslator_{arch}"
+if target != "win10":
+    targetdir += rf"_{target}"
 
 if arch == "x86":
     baddll = "DLL64"
@@ -102,7 +104,9 @@ with open("LunaTranslator/gui/setting/about.py", "r", encoding="utf8") as ff:
         if content:
             content = base64.b64decode(content.encode()).decode()
             with open(
-                os.path.join(targetdir, "LICENSES", "LICENSE." + _[10:-2].replace("/", ".")),
+                os.path.join(
+                    targetdir, "LICENSES", "LICENSE." + _[10:-2].replace("/", ".")
+                ),
                 "w",
                 encoding="utf8 ",
             ) as ff:

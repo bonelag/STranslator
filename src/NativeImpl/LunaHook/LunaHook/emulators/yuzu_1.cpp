@@ -112,6 +112,11 @@ namespace
         }
         buffer->from(s);
     }
+    void T0100B1F0123B6000(hook_context *context, HookParam *hp1, TextBuffer *buffer, uintptr_t *split)
+    {
+        buffer->from((wchar_t *)YUZU::emu_arg(context)[0x1]);
+        *split = YUZU::emu_arg(context)[0x4];
+    }
     void T001005BB019EC0000(hook_context *context, HookParam *hp1, TextBuffer *buffer, uintptr_t *split)
     {
         if ((WORD)YUZU::emu_arg(context)[0x6] == 0)
@@ -2316,13 +2321,26 @@ namespace
         s = re::sub(s, "<[^>]+>|\\[[^\\]]+\\]");
         buffer->from(s);
     }
-
+    void F01007ED02424E000(TextBuffer *buffer, HookParam *hp)
+    {
+        auto s = buffer->strA();
+        s = strReplace(s, "@");
+        s = strReplace(s, u8"❝", "\"");
+        s = strReplace(s, u8"❞", "\"");
+        s = strReplace(s, u8"❛", "'");
+        s = strReplace(s, u8"❜", "'");
+        buffer->from(s);
+    }
     void F010096000CA38000(TextBuffer *buffer, HookParam *hp)
     {
-
         auto s = buffer->strW();
-        s = re::sub(s, LR"(\$\w{1,2})");
-        s = re::sub(s, LR"(\$\[|\$\/.+?])");
+        s = re::sub(s, LR"(\$[a-zA-Z0-9]{1,2})");
+        s = strReplace(s, L"@");
+        s = strReplace(s, L"❝", L"\"");
+        s = strReplace(s, L"❞", L"\"");
+        s = strReplace(s, L"❛", L"'");
+        s = strReplace(s, L"❜", L"'");
+        s = re::sub(s, LR"(\$\[|\$\/.+?\])");
         buffer->from(s);
     }
     void F0100EC001DE7E000(TextBuffer *buffer, HookParam *hp)
@@ -2889,6 +2907,14 @@ struct emfuncinfoX
     emfuncinfo info;
 };
 static const emfuncinfoX emfunctionhooks_1[] = {
+    // Dies irae -Amantes amentes-
+    {0x262C44, {FULL_STRING, 3, 0, 0, 0, 0x0100BB900B5B4000ull, nullptr}}, // 1.0.0 & 1.0.1
+    // 戦国†恋姫EX～COLLECTION～
+    {0x804D7FD0, {FULL_STRING | CODEC_UTF8, 0, 0, 0, F01003080177CA000, 0x010079F01E36A000ull, "1.0.0"}},
+    {0x804DA920, {FULL_STRING | CODEC_UTF8, 0, 0, 0, F01003080177CA000, 0x010079F01E36A000ull, "1.0.2"}},
+    // CARTAGRA
+    {0x801A24E0, {FULL_STRING | CODEC_UTF16, 8, 0, 0, F010096000CA38000, 0x01007ED02424E000ull, "1.0.0"}},
+    {0x8010EFB8, {FULL_STRING | CODEC_UTF8, 9, 0, 0, F01007ED02424E000, 0x01007ED02424E000ull, "1.0.0"}},
     // Starry☆Sky～Spring Memories～
     {0x81B951AC, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, F0100A3D026610000, 0x0100A3D026610000ull, "1.0.0"}},
     // 陰キャラブコメ　インシツマシマシ
@@ -2907,10 +2933,10 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     // UN:LOGICAL
     {0x81BE9F48, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f0100D2A02101C000, 0x010068501FF9A000ull, "1.0.2"}},
     {0x818ED370, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f0100D2A02101C000, 0x010068501FF9A000ull, "1.0.2"}},
-    {0x81BE889C, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, 0, 0x010068501FF9A000ull, "1.0.2"}}, // name
-    {0x818EE690, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f0100D2A02101C000, 0x010068501FF9A000ull, "1.0.0"}},
-    {0x81BEC158, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f0100D2A02101C000, 0x010068501FF9A000ull, "1.0.0"}},
-    {0x81BECDD4, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, 0, 0x010068501FF9A000ull, "1.0.0"}}, // name
+    {0x81BE889C, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, 0, 0x010068501FF9A000ull, "1.0.2"}},                 // name
+    {0x818EE690, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f0100D2A02101C000, 0x010068501FF9A000ull, nullptr}}, // 1.0.0 & 1.0.1
+    {0x81BEC158, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f0100D2A02101C000, 0x010068501FF9A000ull, nullptr}},
+    {0x81BECDD4, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, 0, 0x010068501FF9A000ull, nullptr}}, // name
     // KANADE
     {0x80050E70, {CODEC_UTF16, 0, 0, 0, F0100A05026270000, 0x0100A05026270000ull, "1.0.0"}},
     // Apathy 鳴神学園 霊怪記
@@ -3692,6 +3718,8 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     {0x81322cec, {CODEC_UTF16, 0, 0, ReadUnityString, F010042300C4F6000, 0x0100E390145C8000ull, "1.0.0"}}, // dialogue
     {0x819b1a78, {CODEC_UTF16, 2, 0, ReadUnityString, F010042300C4F6000, 0x0100E390145C8000ull, "1.0.0"}}, // dialogue
     {0x81314e8c, {CODEC_UTF16, 0, 0, ReadUnityString, F010042300C4F6000, 0x0100E390145C8000ull, "1.0.0"}}, // dialogue
+    // ときめきメモリアル forever with you エモーショナル
+    {0x819F08C0, {CODEC_UTF8 | FULL_STRING, 1, 0, 0, f0100A460141B8000, 0x01005F201D534000ull, "1.0.0"}},
     // ときめきメモリアル Girl's Side
     {0x822454a4, {CODEC_UTF16, 0, 0, ReadUnityString, F0100D9A01BD86000, 0x0100D9A01BD86000ull, "1.0.1"}}, // dialogue1
     {0x82247138, {CODEC_UTF16, 0, 0, ReadUnityString, F0100D9A01BD86000, 0x0100D9A01BD86000ull, "1.0.1"}}, // dialogue2
@@ -4018,12 +4046,13 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     {0x8002a530, {CODEC_UTF8, 0, 0, 0, F010095E01581C000, 0x010095E01581C000ull, "1.1.1"}},
     {0x8000f564, {CODEC_UTF8, 0, 0, 0, F010095E01581C000, 0x010095E01581C000ull, "1.1.1"}},
     // 大正×対称アリス all in one
-    {0x80064ab8, {CODEC_UTF16, 1, 0, 0, F010096000CA38000, 0x010096000CA38000ull, "1.0.2"}},
-    {0x80064bd4, {CODEC_UTF16, 1, 0, 0, F010096000CA38000, 0x010096000CA38000ull, "1.0.2"}},
-    {0x8015f968, {CODEC_UTF16, 0, 0, 0, F010096000CA38000, 0x010096000CA38000ull, "1.0.2"}},
+    {0x800640DC, {CODEC_UTF16 | FULL_STRING, 1, 0, 0, F010096000CA38000, 0x010096000CA38000ull, "1.0.1"}},
+    {0x80064ab8, {CODEC_UTF16 | FULL_STRING, 1, 0, 0, F010096000CA38000, 0x010096000CA38000ull, "1.0.2"}},
+    {0x80064bd4, {CODEC_UTF16 | FULL_STRING, 1, 0, 0, F010096000CA38000, 0x010096000CA38000ull, "1.0.2"}},
+    {0x8015f968, {CODEC_UTF16 | FULL_STRING, 0, 0, 0, F010096000CA38000, 0x010096000CA38000ull, "1.0.2"}},
     // 大正×対称アリス HEADS&TAILS
-    {0x8009bb3c, {CODEC_UTF16, 1, 0, 0, F0100B1F0123B6000, 0x0100B1F0123B6000ull, "2.0.0"}},
-    {0x8009bc58, {CODEC_UTF16, 1, 0, 0, F0100B1F0123B6000, 0x0100B1F0123B6000ull, "2.0.0"}},
+    {0x8009bb3c, {CODEC_UTF16 | FULL_STRING, 1, 0, T0100B1F0123B6000, F0100B1F0123B6000, 0x0100B1F0123B6000ull, "2.0.0"}},
+    {0x8009bc58, {CODEC_UTF16 | FULL_STRING, 1, 0, 0, F0100B1F0123B6000, 0x0100B1F0123B6000ull, "2.0.0"}},
     // 幻想マネージュ
     {0x8124f690, {CODEC_UTF16, 0, 0x14, 0, F010037500DF38000, 0x010037500DF38000ull, "1.0.4"}},
     {0x811f63f0, {CODEC_UTF16, 0, 0x14, 0, F010037500DF38000, 0x010037500DF38000ull, "1.0.4"}},

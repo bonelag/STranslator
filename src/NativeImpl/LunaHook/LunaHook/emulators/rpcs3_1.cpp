@@ -88,9 +88,20 @@ namespace
         }
         buffer->from(ss);
     }
+    void BLJM61120(TextBuffer *buffer, HookParam *hp)
+    {
+        static std::string last;
+        auto s = buffer->strA();
+        if (endWith(last, s))
+            return buffer->clear();
+        last = s;
+        NewLineCharFilterA(buffer, hp);
+    }
 }
 
 static const emfuncinfoX emfunctionhooks_1[] = {
+    // Rozen Maiden -Wechseln sie welt ab-
+    {0xe08d90, {FULL_STRING, 0, 0, 0, BLJM61120, "BLJM61120"}},
     // 第２次スーパーロボット大戦ＯＧ
     {0x300d0ee0, {DIRECT_READ | CODEC_UTF8, 0, 0, 0, BLJS10133, "BLJS10133"}},
     // 俺たちに翼はない
@@ -99,6 +110,7 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     {0x19CF60, {FULL_STRING, 1, 0, 0, BLJM60322, "BLJM60322"}},
     // DISORDER6
     {0x1bc188, {FULL_STRING, 2, 0, 0, BLJM61067, "BLJM61067"}},
+    {0x1bc398, {FULL_STRING, 2, 0, 0, BLJM61067, "NPJB00424"}},
     // Dunamis15
     {0x42c90, {CODEC_UTF8 | FULL_STRING, 1, 0, 0, BLJM61131, "BLJM60347"}},
     // たっち、しよっ！ ～Love Application～
@@ -106,7 +118,7 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     // ‘＆’ - 空の向こうで咲きますように -
     {0x46328, {CODEC_UTF8 | FULL_STRING, 1, 0, 0, BLJM61131, "BLJM61131"}},
     // 解放少女 SIN
-    {0x3300C2480, {DIRECT_READ, 0, 0, 0, BLJM61067, "BLJM61118"}},
+    {0x300C2480, {DIRECT_READ, 0, 0, 0, BLJM61067, "BLJM61118"}},
 
 };
 
