@@ -372,6 +372,7 @@ std::vector<ENGINE *> check_engines()
         new Aksys,
         new Siglusold,
         new Willold,
+        new WillPlusETERNAL,
         new GSX,
         new GASTRO,
         new akatombo,
