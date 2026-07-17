@@ -5,8 +5,8 @@ DynamicShiftJISCodec *dynamiccodec = new DynamicShiftJISCodec(932);
 void cast_back(const HookParam &hp, TextBuffer *buff, const std::wstring &trans, bool normal)
 {
 
-  if ((hp.type & EMBED_CODEC_UTF16) || (hp.type & CODEC_UTF16))
-  { // renpy
+  if (hp.type & CODEC_UTF16)
+  {
     buff->from(trans);
   }
   else if (hp.type & CODEC_UTF32)
