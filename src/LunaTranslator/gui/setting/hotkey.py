@@ -4,13 +4,13 @@ from myutils.config import globalconfig, _TR, saveallconfig
 from myutils.hwnd import grabwindow
 from traceback import print_exc
 from myutils.wrapper import threader, tryprint
-from myutils.keycode import vkcode_map
 from myutils.utils import (
     parsekeystringtomodvkcode,
     unsupportkey,
     selectdebugfile,
     checkmd5reloadmodule,
 )
+from gui.specialwidget import KeyPressDetector
 from gui.usefulwidget import (
     D_getsimpleswitch,
     D_getsimplekeyseq,
@@ -27,7 +27,6 @@ from gui.usefulwidget import (
     IconButton,
     makescroll,
     SClickableLabel,
-    getsimplecombobox,
 )
 from gui.dynalang import LLabel, LAction, LDialog, LFormLayout
 
@@ -82,16 +81,17 @@ liandianqi_stoped = True
 
 def invoke_liandianqi_or_stop():
     global liandianqi_stoped
-    key = globalconfig.get("liandianqi_vkey", vkcode_map[list(vkcode_map.keys())[0]])
+    key = globalconfig.get("liandianqi_key")
     if not key:
         return
+    key = parsekeystringtomodvkcode(key)[1]
     interval = globalconfig.get("liandianqi_interval", 1)
     if liandianqi_stoped:
         liandianqi_stoped = False
 
         @threader
         def __():
-            d = globalconfig["quick_setting"]["all"]["44"]
+            d = globalconfig["quick_setting"]["all"]["53"]
             while d["use"] and not liandianqi_stoped:
                 if key in (1, 2, 4):
                     flags = {
@@ -233,8 +233,14 @@ def registrhotkeys(self):
         "_7": lambda: gobject.base.readcurrent(force=True),
         "_7_1": lambda: gobject.base.audioplayer.stop(),
         "_8": lambda: gobject.base.translation_ui.changemousetransparentstate(0),
-        "_9": lambda: (gobject.base.translation_ui.changetoolslockstate(), gobject.base.translation_ui.enterfunction()),
-        "52": lambda: (globalconfig.__setitem__("hidetools", not globalconfig["hidetools"]), gobject.base.translation_ui.enterfunction()),
+        "_9": lambda: (
+            gobject.base.translation_ui.changetoolslockstate(),
+            gobject.base.translation_ui.enterfunction(),
+        ),
+        "52": lambda: (
+            globalconfig.__setitem__("hidetools", not globalconfig["hidetools"]),
+            gobject.base.translation_ui.enterfunction(),
+        ),
         "_10": gobject.base.translation_ui.showsavegame_signal.emit,
         "_11": gobject.base.translation_ui.hotkeyuse_selectprocsignal.emit,
         "_12": lambda: gobject.base.hookselectdialog.showsignal.emit(),
@@ -270,7 +276,7 @@ def registrhotkeys(self):
         "43": lambda: NativeUtils.SuspendResumeProcess(
             windows.GetWindowThreadProcessId(gobject.base.hwnd)
         ),
-        "44": invoke_liandianqi_or_stop,
+        "53": invoke_liandianqi_or_stop,
         "45": gobject.base.prepare,
         "46": lambda: _ocr_focus_switch(-1),
         "47": lambda: _ocr_focus_switch(1),
@@ -309,7 +315,7 @@ hotkeys = [
             "38",
             "_16",
             "_17",
-            "44",
+            "53",
             "45",
             "50",
         ],
@@ -337,18 +343,15 @@ class liandianqi(LDialog):
                 0.1, 10000, globalconfig, "liandianqi_interval", True, 0.1, default=1
             ),
         )
-        combo = getsimplecombobox(
-            list(vkcode_map.keys()),
-            globalconfig,
-            "liandianqi_vkey",
-            default=1,
-            internal=list(vkcode_map.values()),
+        combo = KeyPressDetector(globalconfig.get("liandianqi_key", ""))
+        combo.callback.connect(
+            lambda ks: globalconfig.__setitem__("liandianqi_key", ks)
         )
         formLayout.addRow("按键", combo)
         self.exec()
 
 
-hotkeysettings = {"44": liandianqi}
+hotkeysettings = {"53": liandianqi}
 
 
 def renameapi(qlabel: QLabel, name, self, form: VisLFormLayout, cnt, _=None):

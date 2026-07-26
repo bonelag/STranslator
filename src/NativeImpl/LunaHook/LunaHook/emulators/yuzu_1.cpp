@@ -224,6 +224,16 @@ namespace
         last = s;
         F0100A1E00BFEA000(buffer, hp);
     }
+    void f01005E8023EEE000(TextBuffer *buffer, HookParam *hp)
+    {
+        auto s = buffer->strA();
+        static std::string last;
+        if (last == s)
+            return buffer->clear();
+        last = s;
+        s = re::sub(s, u8R"(\n(　)*)");
+        buffer->from(s);
+    }
 
     void F0100A1200CA3C000(TextBuffer *buffer, HookParam *hp)
     {
@@ -2918,6 +2928,25 @@ namespace
         s = re::sub(s, L"(　)*<br>(　)*");
         buffer->from(s);
     }
+    void f0100AA9025A4C000(TextBuffer *buffer, HookParam *hp)
+    {
+        auto s = buffer->strW();
+        s = re::sub(s, L"<color=.*?>(.*?)<\\/color>", L"$1");
+        buffer->from(s);
+    }
+    void f0100020023EB6000(TextBuffer *buffer, HookParam *hp)
+    {
+        auto s = buffer->strW();
+        s = re::sub(s, L"<.*?>");
+        s = re::sub(s, LR"((　)*\n(　)*)");
+        buffer->from(s);
+    }
+    void f0100020023EB6000_2(TextBuffer *buffer, HookParam *hp)
+    {
+        auto s = buffer->strW();
+        s = re::sub(s, LR"((　)*\\(　)*)");
+        buffer->from(s);
+    }
 }
 struct emfuncinfoX
 {
@@ -2925,11 +2954,21 @@ struct emfuncinfoX
     emfuncinfo info;
 };
 static const emfuncinfoX emfunctionhooks_1[] = {
+    // DRAMAtical Murder re:code
+    {0x8012D9F0, {FULL_STRING | CODEC_UTF8, 1, 0, 0, f01005E8023EEE000, 0x01005E8023EEE000ull, "1.0.0"}},
+    // CRAZY CHA!N -エルピスの鎖-
+    {0x81DE2D24, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f0100020023EB6000_2, 0x0100020023EB6000ull, "1.0.0"}},
+    {0x81D71180, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f0100020023EB6000, 0x0100020023EB6000ull, "1.0.0"}},
+    // Dear Mirror Flower
+    {0x818F4BD4, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f0100AA9025A4C000, 0x0100AA9025A4C000ull, "1.0.0"}},
     // 魔法少女ノ魔女裁判
     {0x819AB020, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f0100D20026E02000, 0x0100D20026E02000ull, "2.0.0a"}},
     {0x8196D4C8, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f0100D20026E02000, 0x0100D20026E02000ull, "2.0.0a"}},
+    {0x819AB4F0, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f0100D20026E02000, 0x0100D20026E02000ull, "2.0.1a"}},
+    {0x8196D998, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f0100D20026E02000, 0x0100D20026E02000ull, "2.0.1a"}},
     // ハッピールートを終わらせて
     {0x816A4E74, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f01008EC02394E000, 0x01008EC02394E000ull, "1.0.0"}},
+    {0x8189D548, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f01008EC02394E000, 0x01008EC02394E000ull, "1.0.1"}},
     // Dies irae -Amantes amentes-
     {0x262C44, {FULL_STRING, 3, 0, 0, 0, 0x0100BB900B5B4000ull, nullptr}}, // 1.0.0 & 1.0.1
     // 戦国†恋姫EX～COLLECTION～

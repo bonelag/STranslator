@@ -6,7 +6,7 @@
 
 ## General
 
-1. #### Disable All Other Shortcuts {#anchor-disableothers}
+1. #### Disable all other shortcut keys. {#anchor-disableothers}
     Disables all other shortcuts except this one. Triggering this shortcut again will release the disable.
 
 1. #### Manual execution {#anchor-_1}
@@ -56,7 +56,7 @@
 1. #### Exit {#anchor-_17}
     N/A
 
-1. #### Auto Clicker {#anchor-44}
+1. #### Auto Clicker {#anchor-53}
     N/A
 
 1. #### Reset translation state {#anchor-45}

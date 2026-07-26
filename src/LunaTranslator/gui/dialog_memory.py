@@ -431,7 +431,7 @@ class dialog_memory(saveposwindow):
         menu.addAction(select)
         action = menu.exec(QCursor.pos())
         if action == crop2:
-            self.crophide(s=True)
+            self.crophide()
         elif action == crophwnd:
             grabwindow(callback=self.cropcallback1)
         elif action == select:
@@ -441,13 +441,7 @@ class dialog_memory(saveposwindow):
                 return
             self.cropcallback(res)
 
-    def crophide(self, s=False):
-        currpos = gobject.base.translation_ui.pos()
-        currpos2 = self.window().pos()
-        if s:
-            self.window().move(-9999, -9999)
-            gobject.base.translation_ui.move(-9999, -9999)
-
+    def crophide(self):
         def ocroncefunction(rect, img=None):
             if not img:
                 img = imageCut(0, rect[0][0], rect[0][1], rect[1][0], rect[1][1])
@@ -455,13 +449,7 @@ class dialog_memory(saveposwindow):
                 return
             self.cropcallback(img)
 
-        def __ocroncefunction(rect, img=None):
-            ocroncefunction(rect, img=img)
-            if s:
-                gobject.base.translation_ui.move(currpos)
-                self.window().move(currpos2)
-
-        rangeselct_function(__ocroncefunction)
+        rangeselct_function(ocroncefunction, self.window(), hideshow=True)
 
     def cropcallback1(self, p: QPixmap):
         if p.isNull():
@@ -482,7 +470,9 @@ class dialog_memory(saveposwindow):
             tgt = os.path.join(self.rwpath, tmsp)
             path.save(tgt)
             path = tgt
-        self.editor.insertPlainText("\n![img]({})\n".format(quote(os.path.basename(path))))
+        self.editor.insertPlainText(
+            "\n![img]({})\n".format(quote(os.path.basename(path)))
+        )
 
     def TextInsert(self):
         menu = QMenu(self)

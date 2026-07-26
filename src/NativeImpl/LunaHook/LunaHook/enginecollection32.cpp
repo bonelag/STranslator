@@ -14,6 +14,7 @@
 #include "engine32/ArcSystemWorks.h"
 #include "engine32/InteractiveNovelEngine.h"
 #include "engine32/AZScript.h"
+#include "engine32/AZSystem.h"
 #include "engine32/Furaiki.h"
 #include "engine32/ZeroEscape.h"
 #include "engine32/Milk.h"
@@ -248,7 +249,6 @@ std::vector<ENGINE *> check_engines()
         new Eushully,
         new Majiro,
         new Elf,
-        new Elf2,
         new Silkys,
         new SilkysOld,
         new CMVS,
@@ -500,5 +500,6 @@ std::vector<ENGINE *> check_engines()
         new ArcSystemWorks,
         new Monochrome,
         new ivory,
+        new AZSystem,
     };
 }

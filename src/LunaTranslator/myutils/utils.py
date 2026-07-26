@@ -22,7 +22,7 @@ from myutils.config import (
 )
 from myutils.keycode import vkcode_map, mod_map
 from language import Languages, TransLanguages
-import threading, winreg
+import threading
 import re, heapq, NativeUtils
 from myutils.wrapper import tryprint, threader
 from html.parser import HTMLParser
@@ -702,7 +702,7 @@ class unsupportkey(Exception):
 
 
 def parsekeystringtomodvkcode(keystring: str, modes=False, canonlymod=False):
-    keystring = keystring.upper().replace(" ", "_")
+    keystring = keystring.replace(" ", "_")
     keys = []
     mode = 0
     _modes = []
@@ -714,19 +714,21 @@ def parsekeystringtomodvkcode(keystring: str, modes=False, canonlymod=False):
     unsupports = []
     lastkey = ksl[-1]
     modkeys = ksl[:-1]
-    if lastkey in vkcode_map:
-        vkcode = vkcode_map[lastkey]
+    lastkey_u = lastkey.upper()
+    if lastkey_u in vkcode_map:
+        vkcode = vkcode_map[lastkey_u]
     else:
-        if canonlymod and lastkey in mod_map:
+        if canonlymod and lastkey_u in mod_map:
             vkcode = None
             modkeys.append(lastkey)
         else:
             unsupports.append(lastkey)
 
     for k in modkeys:
-        if k in mod_map:
-            mode = mode | mod_map[k]
-            _modes.append(mod_map[k])
+        k_u = k.upper()
+        if k_u in mod_map:
+            mode = mode | mod_map[k_u]
+            _modes.append(mod_map[k_u])
         else:
             unsupports.append(k)
     if len(unsupports):
