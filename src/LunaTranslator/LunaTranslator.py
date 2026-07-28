@@ -211,7 +211,9 @@ class BASEOBJECT(QObject):
         self.__connect_internal(self.voicelistsignal)
         self.__connect_internal(self.setresult)
         self.__connect_internal(self.setimage)
-        self.safeinvokefunction.connect(self.__safeinvoke)
+        self.safeinvokefunction.connect(
+            self.__safeinvoke, Qt.ConnectionType.QueuedConnection
+        )
         self.setstylesheetsignal.connect(self.setcommonstylesheet)
         self.__connect_internal(self.progresssignal2)
         self.__connect_internal(self.progresssignal3)
@@ -908,7 +910,13 @@ class BASEOBJECT(QObject):
                 self.translation_ui.displayres.emit(displayreskwargs)
                 try:
                     formatted = re.sub(r"(\[\d+ \d+\|\d+ \d+\])", r"\n\1", res).strip()
-                    self.safeinvokefunction.emit(partial(ovl.show_overlay, formatted))
+                    self.safeinvokefunction.emit(
+                        partial(
+                            ovl.show_overlay,
+                            formatted,
+                            stream_id=f"{currentsignature}:{classname}",
+                        )
+                    )
                 except Exception:
                     print_exc()
             if iter_res_status in (0, 2):  # 0为普通，1为iter，2为iter终止

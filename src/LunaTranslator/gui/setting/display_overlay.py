@@ -30,6 +30,8 @@ def save_overlay_config():
         "auto_background",
         "auto_text_color",
         "auto_font_weight",
+        "auto_font_family",
+        "adaptive_font_size",
     ]}
 
     with open(config_path, "w", encoding="utf-8") as f:
@@ -186,6 +188,16 @@ def overlaysetting(self):
     else:
         auto_weight_text = "Auto font weight from source text"
 
+    if lang == "vi":
+        auto_family_text = "Tự nhận diện phông theo từng khối"
+        adaptive_size_text = "Giữ kích thước chữ của văn bản gốc"
+    elif lang == "zh":
+        auto_family_text = "按文本块自动识别字体"
+        adaptive_size_text = "保留原文字体大小"
+    else:
+        auto_family_text = "Detect font for each text block"
+        adaptive_size_text = "Preserve source text size"
+
     auto_font_weight_row = [
         QLabel(auto_weight_text),
         (QWidget(), 0),
@@ -198,9 +210,37 @@ def overlaysetting(self):
         ),
     ]
 
+    auto_font_family_row = [
+        QLabel(auto_family_text),
+        (QWidget(), 0),
+        _create_switch_row(
+            ovl.CONFIG,
+            "auto_font_family",
+            callback=lambda x: (
+                ovl.CONFIG.update({"auto_font_family": int(x)}),
+                save_overlay_config(),
+            ),
+        ),
+    ]
+
+    adaptive_font_size_row = [
+        QLabel(adaptive_size_text),
+        (QWidget(), 0),
+        _create_switch_row(
+            ovl.CONFIG,
+            "adaptive_font_size",
+            callback=lambda x: (
+                ovl.CONFIG.update({"adaptive_font_size": int(x)}),
+                save_overlay_config(),
+            ),
+        ),
+    ]
+
     manual_rows = [
         show_in_main_row,
         auto_font_weight_row,
+        auto_font_family_row,
+        adaptive_font_size_row,
         [
             _TR("ovlTextColor"),
             text_color_btn,

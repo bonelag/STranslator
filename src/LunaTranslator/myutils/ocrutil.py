@@ -561,6 +561,14 @@ def ocr_run(qimage: QImage, offset=None):
         ocr_init()
         thisocrtype: str = _ocrengine.typename
         res = _ocrengine._private_ocr(qimage, offset)
+        # Keep the exact source pixels with this OCR result.  Font/color/background
+        # inference is delayed until ``textonly`` builds semantic overlay blocks;
+        # attaching the image to the result also prevents a later OCR request from
+        # replacing the style source of an earlier translation.
+        try:
+            res.overlay_source_image = qimage.copy()
+        except Exception:
+            res.overlay_source_image = None
         if globalconfig.get("debugocr", False):
             dispatch_debug_ocr(res, qimage, offset)
         else:

@@ -416,66 +416,170 @@ class OCRResultParsed:
 
     @property
     def textonly(self):
+        cached = getattr(self, "_textonly_cache", None)
+        if cached is not None:
+            return cached
         if not self.result:
             return ""
         if not self.result.hasboxs:
             textonly = "\n".join((_.text for _ in self.result.blocks))
         else:
-            boxs = list(_.box4 for _ in self.result.blocks)
-            texts = list(_.text for _ in self.result.blocks)
-            juhe = _group_text_lines(boxs, texts, self.result.vertical)
-            lines = []
-            self._line_boxes = []
-            for grouped in juhe:
-                chunks = []
-                current = []
-                last_box = None
-                for idx in grouped:
-                    box = boxs[idx]
-                    if last_box:
-                        gap = box[0] - last_box[2] if not self.result.vertical else last_box[1] - box[3]
-                        limit = globalconfig["ocrmergelines_distance"] * min(
-                            min(last_box[2] - last_box[0], last_box[3] - last_box[1]),
-                            min(box[2] - box[0], box[3] - box[1]),
-                        )
-                        if gap > limit:
-                            chunks.append(current)
-                            current = []
-                    current.append(idx)
-                    last_box = box
-                if current:
-                    chunks.append(current)
-                for chunk in chunks:
-                    line_box = boxs[chunk[0]]
-                    for idx in chunk[1:]:
-                        line_box = _OCRBlockS.four_point_box_union(line_box, boxs[idx])
-                    x1 = line_box[0] + self.offset[0]
-                    y1 = line_box[1] + self.offset[1]
-                    w = line_box[2] - line_box[0]
-                    h = line_box[3] - line_box[1]
-                    line_text = self.space.join([texts[idx] for idx in chunk])
-                    
-                    self._line_boxes.append((x1, y1, w, h, line_text))
-                    if self.result.isocrtranslate:
-                        lines.append("[{:.0f} {:.0f}|{:.0f} {:.0f}] {}".format(x1, y1, w, h, line_text))
-                    else:
-                        lines.append("[#{}] {}".format(len(lines) + 1, line_text))
-            textonly = "\n".join(lines)
-            if not self.result.isocrtranslate:
+            # Use the boxes captured before OCRResult.__nearmergeboxs().  The
+            # generic near-merge is useful for plain text, but it is destructive
+            # for an overlay: once a large title and a smaller body are joined,
+            # their individual geometry and typography cannot be recovered.
+            raw_lines = getattr(self.result, "raw_lines", None) or [
+                (_.box4, _.text) for _ in self.result.blocks if _.box4
+            ]
+            raw_atoms = [
+                {
+                    "x": box[0] + self.offset[0],
+                    "y": box[1] + self.offset[1],
+                    "width": box[2] - box[0],
+                    "height": box[3] - box[1],
+                    "text": text,
+                }
+                for box, text in raw_lines
+            ]
+            ovl_module = None
+            try:
+                import ovl as ovl_module
+            except ImportError:
                 try:
-                    import ovl
-                    ovl.set_pending_boxes(self._line_boxes)
-                except ImportError:
+                    from LunaTranslator import ovl as ovl_module
+                except Exception:
+                    ovl_module = None
+
+            try:
+                from overlay_layout import build_ocr_layout
+
+                if ovl_module is not None:
+                    source_image = getattr(self, "overlay_source_image", None)
+                    split_atoms = ovl_module.split_multiline_source_atoms(
+                        raw_atoms,
+                        source_image=source_image,
+                        source_offset=self.offset,
+                    )
+                    split_atoms = ovl_module.split_horizontal_source_atoms(
+                        split_atoms,
+                        source_image=source_image,
+                        source_offset=self.offset,
+                    )
+                    styled_atoms = ovl_module.analyze_source_atoms(
+                        split_atoms,
+                        source_image=source_image,
+                        source_offset=self.offset,
+                    )
+                else:
+                    styled_atoms = raw_atoms
+                self._line_boxes = styled_atoms
+
+                layout_blocks = build_ocr_layout(
+                    styled_atoms,
+                    vertical=self.result.vertical,
+                    separator=self.space,
+                )
+                pending_blocks = [block.as_pending_dict() for block in layout_blocks]
+            except Exception:
+                # Overlay layout is an enhancement; OCR text must still work if
+                # malformed coordinates from an engine cannot be segmented.
+                pending_blocks = [
+                    {
+                        "x": x,
+                        "y": y,
+                        "width": w,
+                        "height": h,
+                        "text": text,
+                        "source_id": index,
+                        "lines": [
+                            {
+                                "x": x,
+                                "y": y,
+                                "width": w,
+                                "height": h,
+                                "text": text,
+                            }
+                        ],
+                    }
+                    for index, atom in enumerate(raw_atoms, 1)
+                    for x, y, w, h, text in [
+                        (
+                            atom["x"],
+                            atom["y"],
+                            atom["width"],
+                            atom["height"],
+                            atom["text"],
+                        )
+                    ]
+                ]
+
+            # Only emit [#id] after successful registration. Fake sequential ids
+            # that are not in _PENDING_BY_MARKER make the overlay silently vanish.
+            marker_ids = None
+            try:
+                if ovl_module is None:
+                    raise ImportError()
+                marker_ids = ovl_module.set_pending_boxes(
+                    pending_blocks,
+                    source_image=getattr(self, "overlay_source_image", None),
+                    source_offset=self.offset,
+                )
+            except ImportError:
+                try:
+                    from LunaTranslator import ovl
+
+                    marker_ids = ovl.set_pending_boxes(
+                        pending_blocks,
+                        source_image=getattr(self, "overlay_source_image", None),
+                        source_offset=self.offset,
+                    )
+                except Exception:
                     try:
-                        from LunaTranslator import ovl
-                        ovl.set_pending_boxes(self._line_boxes)
+                        from traceback import print_exc
+
+                        print_exc()
                     except Exception:
                         pass
+            except Exception:
+                try:
+                    from traceback import print_exc
+
+                    print_exc()
                 except Exception:
                     pass
+
+            if self.result.isocrtranslate:
+                lines = [
+                    "[{x:.0f} {y:.0f}|{width:.0f} {height:.0f}] {text}".format(
+                        **block
+                    )
+                    for block in pending_blocks
+                    if block.get("text", "").strip()
+                ]
+            elif marker_ids is not None and len(marker_ids) == len(pending_blocks):
+                for block, marker_id in zip(pending_blocks, marker_ids):
+                    block["marker_id"] = marker_id
+                lines = [
+                    "[#{marker_id}] {text}".format(**block)
+                    for block in pending_blocks
+                    if block.get("text", "").strip()
+                    and block.get("role") not in ("metadata", "protected")
+                ]
+            else:
+                # Registration failed: plain text so translators still work;
+                # overlay mapping will fall back without bogus markers.
+                lines = [
+                    str(block.get("text", ""))
+                    for block in pending_blocks
+                    if block.get("text", "").strip()
+                    and block.get("role") not in ("metadata", "protected")
+                ]
+            textonly = "\n".join(lines)
         if self.result.isocrtranslate:
-            return textonly
-        return self._100_f(textonly)
+            self._textonly_cache = textonly
+        else:
+            self._textonly_cache = self._100_f(textonly)
+        return self._textonly_cache
 
 
 class baseocr(commonbase):
