@@ -360,8 +360,18 @@ namespace Util
     return 0;
   }
 #endif
-
-  bool CheckFile(LPCWSTR name)
+  bool CheckFileViaHelper(LPCWSTR _name)
+  {
+    std::wstring name = _name;
+    strReplace(name, L"/", L"\\");
+    for (auto &fname : checkFileHelperVector)
+    {
+      if (PathMatchSpecW(fname.c_str(), name.c_str()))
+        return true;
+    }
+    return false;
+  }
+  bool CheckFileByFindFirst(LPCWSTR name)
   {
     WIN32_FIND_DATAW unused;
     HANDLE file = FindFirstFileW(name, &unused);
@@ -370,22 +380,20 @@ namespace Util
       FindClose(file);
       return true;
     }
-    else if (PathFileExists(name))
+    return false;
+  }
+  bool CheckFile(LPCWSTR name)
+  {
+    if (CheckFileByFindFirst(name) || PathFileExists(name))
       return true;
     wchar_t path[MAX_PATH * 2];
     wchar_t *end = path + GetModuleFileNameW(nullptr, path, MAX_PATH);
     while (*(--end) != L'\\')
       ;
     wcscpy_s(end + 1, MAX_PATH, name);
-    file = FindFirstFileW(path, &unused);
-    if (file != INVALID_HANDLE_VALUE)
-    {
-      FindClose(file);
+    if (CheckFileByFindFirst(path) || PathFileExists(path))
       return true;
-    }
-    else if (PathFileExists(name))
-      return true;
-    return false;
+    return CheckFileViaHelper(name);
   }
   // Search string in rsrc section. This section usually contains version and copyright info.
   bool SearchResourceString(LPCWSTR str, HMODULE hModule)
