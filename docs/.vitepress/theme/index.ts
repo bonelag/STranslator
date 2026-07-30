@@ -2,12 +2,11 @@ import DefaultTheme from 'vitepress/theme';
 import { useRouter } from 'vitepress'
 import { watch, h, onMounted } from "vue"
 import './style.css';
-import './components/download.css'
 import { enhanceAppWithTabs } from 'vitepress-plugin-tabs/client'
 import giscus from './giscus.vue'
 import notfound from './notfound.vue';
-import DownloadLink from './components/DownloadLink.vue' // 路径根据你的结构调整
 import downloadbtn from './downloadbtn.vue' // 路径根据你的结构调整
+import RemoteMarkdown from './RemoteMarkdown.vue' // 路径根据你的结构调整
 export default {
     ...DefaultTheme,
     Layout() {
@@ -18,8 +17,8 @@ export default {
     },
     enhanceApp({ app }) {
         enhanceAppWithTabs(app)
-        app.component('DownloadLink', DownloadLink)
         app.component('downloadbtn', downloadbtn)
+        app.component('RemoteMarkdown', RemoteMarkdown)
     },
     setup() {
         const handleRouteChange = () => {
@@ -57,12 +56,10 @@ export default {
                     }
                     if (checkIfMobile()) return;
                     setTimeout(() => {
-                        if (isfuck % 3 == 0) {
-                            if (connectable)
-                                window.open(`/${window.localStorage.currentlang}/support.html`, '_blank')
-                        }
-                        else if (window.localStorage.currentlang == 'zh')
+                        if (window.localStorage.currentlang == 'zh')
                             window.open('https://space.bilibili.com/592120404/video', '_blank')
+                        else 
+                            window.open(`https://discord.gg/invite/ErtDwVeAbB`, '_blank')
                     }, 1000);
                 });
             })

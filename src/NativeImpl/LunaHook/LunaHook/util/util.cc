@@ -360,30 +360,44 @@ namespace Util
     return 0;
   }
 #endif
-
-  bool CheckFile(LPCWSTR name, bool if_exits_also_ok)
+  bool CheckFileViaHelper(LPCWSTR _name)
+  {
+    std::wstring name = _name;
+    strReplace(name, L"/", L"\\");
+    auto hasxiegang = !!wcschr(_name, L'\\');
+    for (auto &fname : checkFileHelperVector)
+    {
+      if (hasxiegang != !!wcschr(fname.c_str(), L'\\'))
+        return false;
+      if (PathMatchSpecW(fname.c_str(), name.c_str()))
+        return true;
+    }
+    return false;
+  }
+  bool CheckFileByFindFirst(LPCWSTR name)
   {
     WIN32_FIND_DATAW unused;
     HANDLE file = FindFirstFileW(name, &unused);
-    if ((file != INVALID_HANDLE_VALUE) || (if_exits_also_ok && PathFileExists(name)))
-    {
-      FindClose(file);
-      return true;
-    }
-    wchar_t path[MAX_PATH * 2];
-    wchar_t *end = path + GetModuleFileNameW(nullptr, path, MAX_PATH);
-    while (*(--end) != L'\\')
-      ;
-    wcscpy_s(end + 1, MAX_PATH, name);
-    file = FindFirstFileW(path, &unused);
-    if ((file != INVALID_HANDLE_VALUE) || (if_exits_also_ok && PathFileExists(path)))
+    if (file != INVALID_HANDLE_VALUE)
     {
       FindClose(file);
       return true;
     }
     return false;
   }
-
+  bool CheckFile(LPCWSTR name)
+  {
+    if (CheckFileByFindFirst(name) || PathFileExists(name))
+      return true;
+    wchar_t path[MAX_PATH * 2];
+    wchar_t *end = path + GetModuleFileNameW(nullptr, path, MAX_PATH);
+    while (*(--end) != L'\\')
+      ;
+    wcscpy_s(end + 1, MAX_PATH, name);
+    if (CheckFileByFindFirst(path) || PathFileExists(path))
+      return true;
+    return CheckFileViaHelper(name);
+  }
   // Search string in rsrc section. This section usually contains version and copyright info.
   bool SearchResourceString(LPCWSTR str, HMODULE hModule)
   {
