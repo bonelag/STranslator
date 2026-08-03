@@ -12,11 +12,10 @@ from myutils.config import (
     _TR,
     uid2gamepath,
 )
-from main import checkintegrity
+from myutils.config import checkintegrity
 from textio.textsource.textsourcebase import basetext
 from myutils.utils import (
     getlangtgt,
-    safe_escape,
     stringfyerror,
     find_or_create_uid,
     find_or_create_uid_for_emu,
@@ -343,7 +342,7 @@ class texthook(basetext):
             return
         if len(self.pids[self.gameuid]):
             return
-        if globalconfig["startgamenototop"] == False:
+        if not globalconfig.get("startgamenototop", True):
             idx = reflist.index(uid)
             reflist.insert(0, reflist.pop(idx))
         self.start(hwnd, pids, name_, uid, autostart=True)

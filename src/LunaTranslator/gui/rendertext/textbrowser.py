@@ -396,6 +396,7 @@ class TextBrowser(QWidget, dataget):
             return
         menu = QMenu(gobject.base.commonstylebase)
         search = LAction("清空", menu)
+        setting = LAction("设置", menu)
         drag = LAction("可拖动的", menu)
         hide = LAction("隐藏工具栏", menu)
         wheel = LAction("鼠标滚动查看历史文本", menu)
@@ -404,8 +405,10 @@ class TextBrowser(QWidget, dataget):
         drag.setCheckable(True)
         drag.setChecked(globalconfig.get("dragable", True))
         hide.setCheckable(True)
-        hide.setChecked(globalconfig["hidetools"])
+        hide.setChecked(globalconfig.get("hidetools", False))
         menu.addAction(search)
+        menu.addAction(setting)
+        menu.addSeparator()
         menu.addAction(drag)
         menu.addAction(hide)
         menu.addAction(wheel)
@@ -413,6 +416,8 @@ class TextBrowser(QWidget, dataget):
         if action == search:
             self.parent().clear(False)
             gobject.base.currenttext = ""
+        elif action == setting:
+            gobject.base.settin_ui_showsignal.emit()
         elif action == drag:
             globalconfig["dragable"] = drag.isChecked()
         elif action == hide:
@@ -1210,7 +1215,7 @@ class TextBrowser(QWidget, dataget):
         font.setBold(bold)
         font.setFamily(fm)
         if half:
-            fs *= globalconfig["kanarate"]
+            fs *= globalconfig.get("kanarate", 0.5)
         font.setPointSizeF(fs)
         fm = QFontMetricsF(font, self)
         if getfm:
