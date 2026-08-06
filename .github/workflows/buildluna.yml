@@ -9,20 +9,20 @@ on:
     #     required: false 
 jobs:
   buildall:
-    runs-on: windows-latest
+    runs-on: ${{ matrix.os || 'windows-latest' }} 
     strategy:
       matrix:
         include:
           - arch: x64
             target: win10
-            pythonversion: '3.13.13'  
+            pythonversion: '3.13.13'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.pythonversion }}
           architecture: ${{ matrix.arch }}
-      - if: matrix.target != 'win10'
+      - if: matrix.pythonversion != '3.13.13'
         uses: actions/setup-python@v6
         with:
           python-version: 3.13.13
