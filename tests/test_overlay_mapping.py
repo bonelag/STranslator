@@ -1,4 +1,5 @@
 import os
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -1501,6 +1502,61 @@ class OverlayMappingTests(unittest.TestCase):
         finally:
             widget.close()
             _APP.processEvents()
+
+
+    def test_overlay_settings_retranslate_without_restart(self):
+        # NativeUtils must load before Qt. This module already imported Qt.
+        script = """
+import os, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+os.chdir(root / "src")
+os.add_dll_directory(str(root / "src" / "files" / "DLL64"))
+sys.path.insert(0, "LunaTranslator")
+import NativeUtils
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+from qtsymbols import QApplication, QVBoxLayout, QWidget
+app = QApplication.instance() or QApplication([])
+import myutils.config as cfg
+from gui.dynalang import LGroupBox, LLabel
+from gui.setting import display_overlay
+from gui.usefulwidget import makescrollgrid
+display_overlay.save_overlay_config = lambda: None
+host = QWidget()
+lay = QVBoxLayout(host)
+makescrollgrid(display_overlay.overlaysetting(host), lay)
+
+def shown():
+    cfg.language_last = None
+    texts = set()
+    for widget in host.findChildren(LLabel):
+        widget.updatelangtext()
+        texts.add(widget.text())
+    for widget in host.findChildren(LGroupBox):
+        widget.updatelangtext()
+        texts.add(widget.title())
+    return texts
+
+cfg.globalconfig["languageuse2"] = "en"
+english = shown()
+assert "Enable Overlay" in english, sorted(english)
+assert "Overlay Settings" in english, sorted(english)
+assert "Show translation on main window" in english, sorted(english)
+assert "Auto" in english, sorted(english)
+cfg.globalconfig["languageuse2"] = "vi"
+vietnamese = shown()
+assert "Bật Lớp phủ" in vietnamese, sorted(vietnamese)
+assert "Cài đặt lớp phủ" in vietnamese, sorted(vietnamese)
+assert "Hiển thị bản dịch trên cửa sổ chính" in vietnamese, sorted(vietnamese)
+assert "Tự động" in vietnamese, sorted(vietnamese)
+assert "Enable Overlay" not in vietnamese, sorted(vietnamese)
+"""
+        proc = subprocess.run(
+            [sys.executable, "-c", script, str(PROJECT_ROOT)],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(proc.returncode, 0, proc.stdout + "\n" + proc.stderr)
 
 
 if __name__ == "__main__":

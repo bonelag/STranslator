@@ -698,12 +698,12 @@ def _max_fitting_font_px(box: "TextBox", min_px: int, max_px: int) -> Optional[i
     return None
 
 
-def _shared_font_px_by_role(boxes: Sequence["TextBox"]) -> dict[str, int]:
-    """Harmonize peer sizes without crushing everything to the hungriest outlier.
+def _peer_font_px(boxes: Sequence["TextBox"]) -> dict[int, int]:
+    """One size for boxes that already share a source size.
 
-    Uses the lower quartile of per-block fit sizes so one pathological narrow
-    box cannot make the whole grid unreadably small, while still keeping sizes
-    close across cards.
+    A feature-card grid should not paint one card smaller than its neighbour.
+    A tag and a file row are both body text and must not be pulled onto one
+    size, or the translated page no longer matches the original.
     """
 
     min_px = int(CONFIG["min_font_size"])
@@ -714,8 +714,7 @@ def _shared_font_px_by_role(boxes: Sequence["TextBox"]) -> dict[str, int]:
             continue
         by_role.setdefault(box.role or "body", []).append(box)
 
-    shared: dict[str, int] = {}
-    for role, members in by_role.items():
+    def harmonize(members: Sequence[TextBox]) -> int:
         fits = []
         starts = []
         for box in members:
@@ -724,29 +723,60 @@ def _shared_font_px_by_role(boxes: Sequence["TextBox"]) -> dict[str, int]:
             if fit is not None:
                 fits.append(fit)
         if not fits:
-            continue
+            return min_px
         fits_sorted = sorted(fits)
-        # Lower quartile (or min for tiny sets) — balanced vs uniform min.
         q_index = max(0, (len(fits_sorted) - 1) // 4)
         common = fits_sorted[q_index]
         if starts:
-            # Never above typical source size for this role.
             common = min(common, max(min_px, int(median(starts))))
-        # Keep within a band of the median fit so grid still looks uniform.
         med = float(median(fits_sorted))
         common = int(min(common, med))
         common = max(min_px, min(common, int(med)))
-        # Soft floor: if quartile is far below median, prefer a bit larger and
-        # let the few hard boxes shrink independently in _create_label.
         if med > 0 and common < med * 0.82:
             common = max(common, int(med * 0.82))
-        shared[role] = max(min_px, min(max_px, common))
-    if "title" in shared and "body" in shared:
-        if shared["title"] < shared["body"]:
-            shared["title"] = shared["body"]
-        elif shared["title"] > shared["body"] * 1.35:
-            shared["title"] = max(shared["body"], int(shared["body"] * 1.18))
-    return shared
+        return max(min_px, min(max_px, common))
+
+    assigned: dict[int, int] = {}
+    role_level: dict[str, int] = {}
+    for role, members in by_role.items():
+        ranked = sorted(
+            (
+                (box, _estimate_start_font_px(box, min_px, max_px))
+                for box in members
+            ),
+            key=lambda item: item[1],
+        )
+        clusters: list[list[TextBox]] = []
+        cluster_start = 0
+        for box, start in ranked:
+            if not clusters or start > cluster_start * 1.12:
+                clusters.append([box])
+                cluster_start = start
+            else:
+                clusters[-1].append(box)
+        levels = []
+        for cluster in clusters:
+            common = harmonize(cluster)
+            levels.append(common)
+            for box in cluster:
+                assigned[id(box)] = common
+        if levels:
+            role_level[role] = int(median(levels))
+    if "title" in role_level and "body" in role_level:
+        body_px = role_level["body"]
+        title_px = role_level["title"]
+        if title_px < body_px:
+            title_px = body_px
+        elif title_px > body_px * 1.35:
+            title_px = max(body_px, int(body_px * 1.18))
+        for box in by_role.get("title", []):
+            start = _estimate_start_font_px(box, min_px, max_px)
+            if start <= body_px * 1.2:
+                assigned[id(box)] = max(
+                    assigned.get(id(box), min_px),
+                    min(max_px, title_px),
+                )
+    return assigned
 
 
 try:
@@ -881,22 +911,18 @@ def sample_text_color(image, box: "TextBox", bg_color: QColor) -> QColor:
     if max_diff < 35:
         return QColor(255, 255, 255) if bg_color.lightness() < 128 else QColor(0, 0, 0)
         
-    # Bước 2: Chỉ lấy trung bình cộng của các pixel có độ chênh lệch màu thuộc nhóm cao nhất
-    # (chênh lệch so với max_diff không quá 60 đơn vị RGB) để lấy đúng phần ruột chữ sáng nhất
-    r_sum = g_sum = b_sum = count = 0
-    threshold = max(35, max_diff - 60)
-    for r, g, b, diff in pixels_with_diff:
-        if diff >= threshold:
-            r_sum += r
-            g_sum += g
-            b_sum += b
-            count += 1
-            
-    if count == 0:
+    # Majority ink, not the brightest handful of pixels. A caret or a
+    # specular edge is brighter than the letters and used to paint a gray
+    # placeholder white.
+    threshold = max(35, int(max_diff * 0.45))
+    ink = [
+        QColor(r, g, b)
+        for r, g, b, diff in pixels_with_diff
+        if diff >= threshold
+    ]
+    if not ink:
         return QColor(255, 255, 255) if bg_color.lightness() < 128 else QColor(0, 0, 0)
-        
-    avg_color = QColor(r_sum // count, g_sum // count, b_sum // count)
-    return clean_text_color(avg_color)
+    return clean_text_color(find_dominant_color(ink))
 
 
 def measure_ink_geometry(
@@ -2645,16 +2671,26 @@ def _paragraph_continuation(previous: TextBox, nxt: TextBox) -> bool:
     # styled: it belongs back in the paragraph whatever it looks like — but
     # only if it is the next line, not the next item further down the page.
     if previous.demoted or nxt.demoted:
-        room = 1.5 * max(1.0, min(previous.height, nxt.height))
-        return nxt.y - (previous.y + previous.height) <= room
+        # A demoted line belongs in the paragraph only while it is the next
+        # line. Measured ink makes a menu-row gap obvious; without it, box
+        # height is all we have and the older allowance stays.
+        gap = nxt.y - (previous.y + previous.height)
+        if previous.ink_height and nxt.ink_height:
+            room = 0.90 * min(previous.ink_height, nxt.ink_height)
+        else:
+            room = 1.5 * max(1.0, min(previous.height, nxt.height))
+        return gap <= room
     first_rgb = previous.text_rgb or _rgb_of(previous.text_color)
     second_rgb = nxt.text_rgb or _rgb_of(nxt.text_color)
     if first_rgb and second_rgb:
         if sum(abs(int(a) - int(b)) for a, b in zip(first_rgb, second_rgb)) > 45:
             return False
+    # Ink, not the shared role size. A page-wide font size is larger than a
+    # sidebar row's glyphs and was treating the blank gap under a menu row
+    # as paragraph leading.
     glyph = min(
-        previous.font_size or previous.ink_height or previous.height,
-        nxt.font_size or nxt.ink_height or nxt.height,
+        previous.ink_height or previous.font_size or previous.height,
+        nxt.ink_height or nxt.font_size or nxt.height,
     )
     if glyph <= 0:
         return False
@@ -3011,6 +3047,126 @@ def _box_in_chat_layout(box: TextBox) -> bool:
             if source is not None and source.role in ("metadata", "protected"):
                 return True
     return False
+
+
+def _clamp_same_row(boxes: Sequence[TextBox]) -> list[TextBox]:
+    """Stop a label at the next label on the same row.
+
+    A longer translation otherwise runs through the neighbour: "Security and
+    quality" becomes long enough to sit on top of "Actions".
+    """
+
+    result = list(boxes)
+    for index, box in enumerate(boxes):
+        if not (box.text or "").strip():
+            continue
+        limit = box.x + box.width
+        for other in boxes:
+            if other is box or not (other.text or "").strip():
+                continue
+            overlap = min(box.y + box.height, other.y + other.height) - max(
+                box.y, other.y
+            )
+            if overlap < 0.45 * min(box.height, other.height):
+                continue
+            if other.x > box.x + 8:
+                limit = min(limit, other.x - 8.0)
+        if box.x + 16 < limit < box.x + box.width - 0.5:
+            result[index] = replace(box, width=limit - box.x)
+    return result
+
+
+def _trim_icon_column(box: TextBox, image, origin_x: float = 0.0, origin_y: float = 0.0) -> TextBox:
+    """If a single-line box starts with a small separated ink blob, that blob
+    is an icon the OCR rectangle swallowed. Leave it uncovered.
+    """
+
+    if (
+        image is None
+        or image.isNull()
+        or len(box.source_lines or []) != 1
+        or box.width < 36
+        or box.height < 10
+    ):
+        return box
+    x0 = int(round(box.x - origin_x))
+    y0 = int(round(box.y - origin_y))
+    w = int(round(box.width))
+    h = int(round(box.height))
+    if x0 < 0 or y0 < 0 or x0 + w > image.width() or y0 + h > image.height():
+        return box
+    background = QColor(image.pixel(x0, y0))
+    columns = []
+    for x in range(x0, x0 + w):
+        if any(
+            color_distance(QColor(image.pixel(x, y)), background) > 36
+            for y in range(y0, y0 + h, 2)
+        ):
+            columns.append(x)
+    if len(columns) < 4:
+        return box
+    segments = []
+    for x in columns:
+        if not segments or x - segments[-1][1] > max(4, int(h * 0.22)):
+            segments.append([x, x])
+        else:
+            segments[-1][1] = x
+    if len(segments) < 2:
+        return box
+    blob = segments[0][1] - segments[0][0] + 1
+    gap = segments[1][0] - segments[0][1]
+    if blob > h * 1.35 or gap < max(4, int(h * 0.18)):
+        return box
+    # A couple of pixels past the gap, so a sliver of the misread glyph
+    # does not stay painted between the icon and the label.
+    cut = segments[1][0] - x0 + max(3, int(h * 0.12))
+    if cut >= w - 12:
+        return box
+    lines = []
+    for line in box.source_lines or []:
+        line = dict(line)
+        line["x"] = float(line.get("x", box.x)) + cut
+        line["width"] = max(8.0, float(line.get("width", box.width)) - cut)
+        lines.append(line)
+    return replace(box, x=box.x + cut, width=box.width - cut, source_lines=lines)
+
+
+_LEADING_ICON = re.compile(r"^(\S)\s+\S")
+
+
+def _trim_leading_icon(box: TextBox) -> TextBox:
+    """Drop a one-character OCR misread of an icon and leave the icon visible.
+
+    Snipping Tool reads a magnifying glass as ``Q`` and a download glyph as
+    ``L``, then the overlay paints over the icon. A bullet or a prompt the
+    translation still starts with is left alone.
+    """
+
+    source = " ".join(
+        str(line.get("text", "")).strip()
+        for line in (box.source_lines or [])
+        if str(line.get("text", "")).strip()
+    )
+    match = _LEADING_ICON.match(source)
+    if not match:
+        return box
+    token = match.group(1)
+    if not (token.isalnum() or token in "@#"):
+        return box
+    if (box.text or "").lstrip().startswith(token):
+        return box
+    pad = max(12.0, float(box.ink_height or box.height or 16) * 1.7)
+    if box.width <= pad + 16:
+        return box
+    lines = []
+    for line in box.source_lines or []:
+        line = dict(line)
+        line["x"] = float(line.get("x", box.x)) + pad
+        line["width"] = max(8.0, float(line.get("width", box.width)) - pad)
+        lines.append(line)
+    return replace(
+        box, x=box.x + pad, width=box.width - pad, source_lines=lines
+    )
 
 
 def _widen_list_rows(
@@ -3471,7 +3627,15 @@ class Overlay(QWidget):
 
     def _render_boxes(self, boxes: Sequence[TextBox], dpr: float, screenshot=None):
         self.auto_bg_rects: "list[tuple]" = []
-        source_boxes = list(boxes)
+        source_boxes = [
+            _trim_icon_column(
+                _trim_leading_icon(box),
+                screenshot,
+                self.screen_origin_physical_x,
+                self.screen_origin_physical_y,
+            )
+            for box in boxes
+        ]
         planning_boxes = list(source_boxes)
         known_markers = {box.marker_id for box in source_boxes if box.marker_id > 0}
         with _PENDING_LOCK:
@@ -3497,6 +3661,7 @@ class Overlay(QWidget):
             replace(source, width=planned[index].width, height=planned[index].height)
             for index, source in enumerate(source_boxes)
         ]
+        flow_boxes = _clamp_same_row(flow_boxes)
 
         def scaled_source_line(value, fallback):
             line = dict(value)
@@ -3654,15 +3819,7 @@ class Overlay(QWidget):
             _box_in_chat_layout(box) for box in paintable
         )
         # Chat keeps per-message font sizes (shared min was crushing long posts).
-        shared_px = {} if chat_frame else _shared_font_px_by_role(paintable)
-        if not chat_frame and "title" in shared_px and "body" in shared_px:
-            shared_px["title"] = max(
-                shared_px["title"],
-                min(
-                    int(CONFIG["max_font_size"]),
-                    int(shared_px["body"] * 1.15 + 0.5),
-                ),
-            )
+        shared_px = {} if chat_frame else _peer_font_px(paintable)
 
         # Phase 3: masks + labels at the harmonized size.
         for box_index, source_box, scaled, mask_only in render_jobs:
@@ -3732,7 +3889,7 @@ class Overlay(QWidget):
             label = self._create_label(
                 scaled,
                 skip_background=skip_bg,
-                forced_px=shared_px.get(scaled.role or "body"),
+                forced_px=shared_px.get(id(scaled)),
             )
             collision = False
             chat_label = _box_in_chat_layout(scaled)
@@ -4267,7 +4424,10 @@ class Overlay(QWidget):
         # still had body bold=False before harmonize).
         if CONFIG.get("auto_font_weight", 0):
             if (box.role or "body") == "title":
-                font.setBold(True)
+                # A bright field (search placeholder) can be tagged as a title
+                # without actually being bold. Trust the measured stroke.
+                score = box.bold_score
+                font.setBold(score is None or score > 0.16)
             elif (box.role or "body") == "body":
                 font.setBold(False)
             elif box.bold is not None:
@@ -4370,10 +4530,13 @@ class Overlay(QWidget):
                         # A label that was one line in the source should stay
                         # one line: a nav tab broken across two rows reads as
                         # a layout bug, while a slightly smaller one does not.
+                        # Shrink a one-line control before wrapping it. Wrapping
+                        # early lands a nav tab on the row below. At the minimum
+                        # size, wrap rather than drop the label.
                         if (
                             source_line_count == 1
                             and len(laid[0]) > 1
-                            and px > max(min_px, round(px0 * 0.78))
+                            and px > min_px
                         ):
                             continue
                         (
@@ -4431,7 +4594,8 @@ class Overlay(QWidget):
         # Final weight lock — body never inherits a bold fragment style.
         if CONFIG.get("auto_font_weight", 0):
             if (box.role or "body") == "title":
-                font.setBold(True)
+                score = box.bold_score
+                font.setBold(score is None or score > 0.16)
             elif (box.role or "body") == "body":
                 font.setBold(False)
         label._baseline_offset = fitted_baseline + paint_margin

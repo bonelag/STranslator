@@ -41,6 +41,89 @@ class OverlaySegmentationTests(unittest.TestCase):
         self.assertEqual(["Title", "Body first line Body second line"], [b.text for b in blocks])
         self.assertNotEqual(blocks[0].text_rgb, blocks[1].text_rgb)
 
+    def test_blank_gap_keeps_sidebar_rows_apart(self):
+        blocks = build_ocr_layout(
+            [
+                {
+                    "x": 44, "y": 192, "width": 218, "height": 29,
+                    "text": "8 Assigned to me",
+                    "text_rgb": (200, 200, 200),
+                    "ink_height": 20, "bold_score": 0.10,
+                },
+                {
+                    "x": 44, "y": 251, "width": 205, "height": 28,
+                    "text": "Created by me",
+                    "text_rgb": (200, 200, 200),
+                    "ink_height": 20, "bold_score": 0.10,
+                },
+            ],
+            separator=" ",
+        )
+        self.assertEqual(
+            ["8 Assigned to me", "Created by me"],
+            [block.text for block in blocks],
+        )
+
+    def test_bold_flag_jitter_keeps_a_paragraph_together(self):
+        blocks = build_ocr_layout(
+            [
+                {
+                    "x": 500, "y": 265, "width": 527, "height": 32,
+                    "text": "Claude understands your codebase and",
+                    "text_rgb": (187, 187, 187),
+                    "ink_height": 27, "bold_score": 0.148, "bold": True,
+                },
+                {
+                    "x": 499, "y": 302, "width": 566, "height": 36,
+                    "text": "helps you build, debug, and ship faster. Get",
+                    "text_rgb": (185, 185, 185),
+                    "ink_height": 28, "bold_score": 0.107, "bold": False,
+                },
+                {
+                    "x": 501, "y": 342, "width": 361, "height": 35,
+                    "text": "started in the desktop app.",
+                    "text_rgb": (186, 186, 186),
+                    "ink_height": 28, "bold_score": 0.143, "bold": True,
+                },
+            ],
+            separator=" ",
+        )
+        self.assertEqual(1, len(blocks))
+        self.assertEqual("body", blocks[0].role)
+
+    def test_short_last_line_ink_does_not_split_card_body(self):
+        blocks = build_ocr_layout(
+            [
+                {
+                    "x": 40, "y": 189, "width": 280, "height": 35,
+                    "text": "Built-in high-precision OCR",
+                    "text_rgb": (152, 152, 152),
+                    "ink_height": 27, "bold_score": 0.148, "bold": True,
+                },
+                {
+                    "x": 40, "y": 240, "width": 340, "height": 33,
+                    "text": "model, supporting many other",
+                    "text_rgb": (151, 151, 151),
+                    "ink_height": 27, "bold_score": 0.111, "bold": False,
+                },
+                {
+                    "x": 40, "y": 287, "width": 300, "height": 33,
+                    "text": "online & offline OCR engines",
+                    "text_rgb": (151, 151, 151),
+                    "ink_height": 28, "bold_score": 0.107, "bold": False,
+                },
+                {
+                    "x": 40, "y": 336, "width": 220, "height": 30,
+                    "text": "for flexible text extraction.",
+                    "text_rgb": (151, 151, 151),
+                    "ink_height": 21, "bold_score": 0.190, "bold": True,
+                },
+            ],
+            separator=" ",
+        )
+        self.assertEqual(1, len(blocks))
+        self.assertEqual("body", blocks[0].role)
+
     def test_combined_size_and_weight_separate_same_color_title(self):
         blocks = build_ocr_layout(
             [

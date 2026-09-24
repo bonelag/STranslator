@@ -21,9 +21,10 @@ Thumbs.db
 *.7z
 build/
 builds/
+runtime*
 p*.png
 r*.png
-
+*.pyd
 .vscode/settings.json
 src/.cache
 src/userconfig*

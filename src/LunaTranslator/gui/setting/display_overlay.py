@@ -9,7 +9,7 @@ from gui.usefulwidget import (
     getboxlayout,
     FocusFontCombo
 )
-from myutils.config import _TR, globalconfig
+from gui.dynalang import LLabel
 import ovl
 ovl.load_config()
 
@@ -113,7 +113,7 @@ def overlaysetting(self):
     bg_opacity_and_auto_lay.setSpacing(6)
     bg_opacity_and_auto_lay.addLayout(bg_opacity_slider)
     bg_opacity_and_auto_lay.addSpacing(0)
-    bg_opacity_and_auto_lay.addWidget(QLabel(_TR("Auto")))
+    bg_opacity_and_auto_lay.addWidget(LLabel("自动"))
     bg_opacity_and_auto_lay.addWidget(auto_switch)
     bg_opacity_and_auto_lay.addSpacing(30)
 
@@ -145,7 +145,7 @@ def overlaysetting(self):
     text_opacity_and_auto_lay.setSpacing(6)
     text_opacity_and_auto_lay.addLayout(text_opacity_slider)
     text_opacity_and_auto_lay.addSpacing(0)
-    text_opacity_and_auto_lay.addWidget(QLabel(_TR("Auto")))
+    text_opacity_and_auto_lay.addWidget(LLabel("自动"))
     text_opacity_and_auto_lay.addWidget(auto_text_switch)
     text_opacity_and_auto_lay.addSpacing(30)
 
@@ -159,16 +159,9 @@ def overlaysetting(self):
     on_auto_text_toggle(auto_text_switch.isChecked())
 
     import gobject
-    lang = globalconfig.get("languageuse2", "zh")
-    if lang == "vi":
-        show_in_main_text = "Hiển thị bản dịch trên cửa sổ chính"
-    elif lang == "zh":
-        show_in_main_text = "在主窗口显示翻译"
-    else:
-        show_in_main_text = "Show translation on main window"
 
     show_in_main_row = [
-        QLabel(show_in_main_text),
+        "ovlShowInMain",
         (QWidget(), 0),
         _create_switch_row(
             ovl.CONFIG, "show_in_main",
@@ -181,25 +174,8 @@ def overlaysetting(self):
         )
     ]
 
-    if lang == "vi":
-        auto_weight_text = "Tự động độ đậm phông theo văn bản gốc"
-    elif lang == "zh":
-        auto_weight_text = "根据原文自动字体粗细"
-    else:
-        auto_weight_text = "Auto font weight from source text"
-
-    if lang == "vi":
-        auto_family_text = "Tự nhận diện phông theo từng khối"
-        adaptive_size_text = "Giữ kích thước chữ của văn bản gốc"
-    elif lang == "zh":
-        auto_family_text = "按文本块自动识别字体"
-        adaptive_size_text = "保留原文字体大小"
-    else:
-        auto_family_text = "Detect font for each text block"
-        adaptive_size_text = "Preserve source text size"
-
     auto_font_weight_row = [
-        QLabel(auto_weight_text),
+        "ovlAutoWeight",
         (QWidget(), 0),
         _create_switch_row(
             ovl.CONFIG, "auto_font_weight",
@@ -211,7 +187,7 @@ def overlaysetting(self):
     ]
 
     auto_font_family_row = [
-        QLabel(auto_family_text),
+        "ovlAutoFamily",
         (QWidget(), 0),
         _create_switch_row(
             ovl.CONFIG,
@@ -224,7 +200,7 @@ def overlaysetting(self):
     ]
 
     adaptive_font_size_row = [
-        QLabel(adaptive_size_text),
+        "ovlAdaptiveSize",
         (QWidget(), 0),
         _create_switch_row(
             ovl.CONFIG,
@@ -242,58 +218,58 @@ def overlaysetting(self):
         auto_font_family_row,
         adaptive_font_size_row,
         [
-            _TR("ovlTextColor"),
+            "ovlTextColor",
             text_color_btn,
             (QWidget(), 0),
-            _TR("ovlTextOpacity"),
+            "ovlTextOpacity",
             text_opacity_and_auto,
         ],
         [
-            _TR("ovlStrokeColor"),
+            "ovlStrokeColor",
             D_getcolorbutton(self, ovl.CONFIG, "_stroke_rgb", callback=lambda _: update_color_with_opacity(self, "stroke_color", "_stroke_rgb", "_stroke_alpha")),
             (QWidget(), 0),
-            _TR("ovlTextOpacity"),
+            "ovlTextOpacity",
             functools.partial(create_opacity_slider_generic, self, "stroke_color", "_stroke_rgb", "_stroke_alpha"),
         ],
         [
-            _TR("ovlBackColor"),
+            "ovlBackColor",
             bg_color_btn,
             (QWidget(), 0),
-            _TR("ovlTextOpacity"),
+            "ovlTextOpacity",
             bg_opacity_and_auto,
         ],
         [
-            _TR("ovlStrokeWidth"),
+            "ovlStrokeWidth",
             (QWidget(), 0),
             _right_layout(D_getspinbox(0, 10, ovl.CONFIG, "stroke_width", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
         ],
         [
-            _TR("ovlTextSizeMin"),
+            "ovlTextSizeMin",
             (QWidget(), 0),
             _right_layout(D_getspinbox(1, 100, ovl.CONFIG, "min_font_size", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
         ],
         [
-            _TR("ovlTextSizeMax"),
+            "ovlTextSizeMax",
             (QWidget(), 0),
             _right_layout(D_getspinbox(1, 200, ovl.CONFIG, "max_font_size", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
         ],
         [
-            _TR("ovlTextFont"),
+            "ovlTextFont",
             (QWidget(), 0),
             _right_layout(_create_font_combo(), "", fixed_width=box_width),
         ],
         [
-            _TR("ovlPaddingH"),
+            "ovlPaddingH",
             (QWidget(), 0),
             _right_layout(D_getspinbox(0, 50, ovl.CONFIG, "horizontal_padding", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
         ],
         [
-            _TR("ovlPaddingV"),
+            "ovlPaddingV",
             (QWidget(), 0),
             _right_layout(D_getspinbox(0, 50, ovl.CONFIG, "vertical_padding", double=True, step=0.5, callback=generic_save), "px", fixed_width=box_width),
         ],
         [
-            _TR("ovlTimeout"),
+            "ovlTimeout",
             (QWidget(), 0),
             _right_layout(D_getspinbox(100, 60000, ovl.CONFIG, "timeout_ms", callback=generic_save), "ms", fixed_width=box_width),
         ],
@@ -302,11 +278,11 @@ def overlaysetting(self):
     return [
         [
             dict(
-                title=_TR("浮窗叠加"),
+                title="浮窗叠加",
                 type="grid",
                 grid=[
                     [
-                        _TR("ovlEnable"),
+                        "ovlEnable",
                         (QWidget(), 0),
                         _create_switch_row(ovl.CONFIG, "enable", callback=lambda x: (ovl.CONFIG.update({"enable": int(x)}), save_overlay_config())),
                     ],

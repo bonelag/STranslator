@@ -197,6 +197,13 @@ def _style_compatible(
         if first.bold_score is not None and second.bold_score is not None
         else None
     )
+    raw_first = first.ink_height or first_size
+    raw_second = second.ink_height or second_size
+    raw_ratio = max(raw_first, raw_second) / max(1.0, min(raw_first, raw_second))
+    # A short line, or one without descenders, inks less of the em box. The
+    # thickness/ink score then jumps even though the stroke weight did not,
+    # and a boolean bold flag that straddles the cutoff splits one paragraph.
+    clipped_ink = not same_row and raw_ratio > 1.20 and size_ratio <= 1.08
 
     # UI typography often separates a heading from its body with several
     # individually subtle signals.  Looking at each signal in isolation used
@@ -208,7 +215,7 @@ def _style_compatible(
         return False
     # A bullet routinely opens bold and continues regular, so the weight
     # averaged over its first line says nothing about the lines that follow.
-    if not mixed_weight:
+    if not mixed_weight and not clipped_ink:
         if bold_delta is not None and bold_delta > 0.045:
             return False
         if (
@@ -218,13 +225,15 @@ def _style_compatible(
             and bold_delta > 0.025
         ):
             return False
-    if (
-        not mixed_weight
-        and first.bold is not None
-        and second.bold is not None
-        and first.bold != second.bold
-    ):
-        return False
+        # Scores already decided the weight. A flag that flipped across the
+        # cutoff while the scores stayed close is measurement noise.
+        if (
+            bold_delta is None
+            and first.bold is not None
+            and second.bold is not None
+            and first.bold != second.bold
+        ):
+            return False
     return True
 
 
@@ -707,6 +716,14 @@ def _can_append(
     # A small negative gap is normal for OCR boxes. A large overlap generally
     # means that the two boxes are separate columns on the same visual row.
     if gap < -0.35 * min(previous.height, line.height):
+        return None
+    # Wrapped lines sit on each other. When ink was measured, a blank strip
+    # taller than the glyphs is the gap between two controls. Box height is
+    # not used here: engines pad it, and a padded box makes a real paragraph
+    # look gappy.
+    prev_ink = _normalized_ink(previous)
+    line_ink = _normalized_ink(line)
+    if prev_ink and line_ink and gap > max(prev_ink, line_ink) * 0.90:
         return None
 
     previous_size = _glyph_size(previous, typical_glyph or previous.height)
