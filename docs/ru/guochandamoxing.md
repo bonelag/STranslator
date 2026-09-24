@@ -2,7 +2,7 @@
 
 ## Универсальный интерфейс для больших моделей
 
-::: details Использование нескольких интерфейсов больших моделей одновременно？
+::: details Использование нескольких интерфейсов больших моделей одновременно?
 Если вам нужно просто чередовать несколько разных ключей API, достаточно разделить их символом |.
 
 Но иногда требуется одновременно использовать разные API-адреса/prompt/модели/параметры для сравнения результатов перевода. Метод следующий:
@@ -39,7 +39,6 @@
 
     Система будет прикреплять указанное количество предыдущих исходных текстов и переводов к запросу для улучшения качества перевода. Если установлено значение 0, эта функция отключается.  
 
-    - **Оптимизация кэширования** — для таких платформ, как DeepSeek, запросы с попаданием в кэш тарифицируются по сниженной цене. Активация этой функции оптимизирует формат прикрепляемого контекста для увеличения вероятности попадания в кэш.  
 
 1. #### Пользовательский system prompt / Пользовательское user message / prefill  {#anchor-prompt}
 
@@ -117,7 +116,7 @@
 
 == Azure
 
-**API-адрес** `https://{endpoint}.openai.azure.com/openai/deployments/{deployName}/chat/completions？api-version=2023-12-01-preview`
+**API-адрес** `https://{endpoint}.openai.azure.com/openai/deployments/{deployName}/chat/completions?api-version=2023-12-01-preview`
 
 Замените `{endpoint}` и `{deployName}` на ваши значения endpoint и deployName
 
@@ -147,7 +146,7 @@
 
 == ByteDance Volcano Engine
 
-**API Key** Получите [создав API Key](https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey？apikey=%7B%7D)
+**API Key** Получите [создав API Key](https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey?apikey=%7B%7D)
 
 **model** https://console.volcengine.com/ark/region:cn-beijing/docs/82379/1330310?lang=zh
 

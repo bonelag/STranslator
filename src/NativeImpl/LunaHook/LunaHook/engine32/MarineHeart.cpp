@@ -120,7 +120,16 @@ bool InsertMarineHeartHook()
   hp.address = addr;
   hp.offset = stackoffset(1);
   hp.type = USING_STRING | DATA_INDIRECT; // = 9
-
+  hp.filter_fun = [](TextBuffer *buffer, HookParam *hp)
+  {
+    auto s = buffer->strA();
+    static lru_cache<std::string> last(5);
+    if (last.touch(s))
+      return buffer->clear();
+    s = re::sub(s, R"((\x81\x40)*[\n\r]+(\x81\x40)*)");
+    s = re::sub(s, R"(^(\x81\x40)*)");
+    buffer->from(s);
+  };
   return NewHook(hp, "MarineHeart");
 }
 

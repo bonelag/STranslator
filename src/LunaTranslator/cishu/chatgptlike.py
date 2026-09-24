@@ -11,7 +11,6 @@ from cishu.cishubase import cishubase
 from translator.gptcommon import createheaders
 from gui.customparams import customparams, getcustombodyheaders
 from language import Languages
-import random
 
 
 def list_models(typename, regist):
@@ -22,7 +21,7 @@ def list_models(typename, regist):
     )
 
 
-class chatgptlike(cishubase):
+class Cishu(cishubase):
     use_github_md_css = True
     backgroundparser = 'document.querySelector("#luna_dict_internal_view > article").style.backgroundColor="rgba(0,0,0,0)"'
 
@@ -37,8 +36,7 @@ class chatgptlike(cishubase):
         __.update(self.rawconfig)
         if "modellistcache" in __:
             __.pop("modellistcache")
-        temperature = random.randint(0, int(20 * self.config["Temperature"]))
-        return (word, sentence, temperature, str(__))
+        return (word, sentence, str(__))
 
     def search_1(self, apitype: APIType, sysprompt, query, extrabody, extraheader):
         message = [{"role": "system", "content": sysprompt}]
@@ -102,7 +100,6 @@ class chatgptlike(cishubase):
         return resp
 
     def query_cld(self, sysprompt, query, extrabody, extraheader):
-        temperature = self.config["Temperature"]
 
         message = []
         message.append({"role": "user", "content": query})
@@ -116,8 +113,9 @@ class chatgptlike(cishubase):
             messages=message,
             system=sysprompt,
             max_tokens=self.config["max_tokens"],
-            temperature=temperature,
         )
+        if self.config.get("Temperature.use", True):
+            data.update(temperature=self.config["Temperature"])
         data.update(extrabody)
         headers.update(extraheader)
         response = self.proxysession.post(

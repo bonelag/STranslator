@@ -190,7 +190,7 @@ from cishu.cishubase import cishubase
 import re
 
 
-class mdict(cishubase):
+class Cishu(cishubase):
     def getdistance(self, f):
         _ = self.extraconf[f]
 
@@ -451,7 +451,7 @@ class mdict(cishubase):
         allres = []
         if k in __safe:  # 避免循环引用
             return []
-        __safe.append(k)
+        __safe.add(k)
         for content in index.mdx_lookup(k):
             match = re.match("@@@LINK=(.*)", content.strip())
             if match:
@@ -501,7 +501,7 @@ class mdict(cishubase):
     def searchthread(self, allres, i, word, audiob64vals, hrefsrcvals):
         f, index = self.builders[i]
         results = []
-        __safe = []
+        __safe = set()
         try:
             keys = self.querycomplex(word, self.getdistance(f), index)
             if not keys:

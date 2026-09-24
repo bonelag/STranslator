@@ -5,6 +5,8 @@ from language import Languages
 
 
 class OCR(baseocr):
+    required_image_format = "jpg"
+
     @property
     def region(self):
         try:
@@ -35,7 +37,7 @@ class OCR(baseocr):
             Languages.Vietnamese: "vie",
             Languages.Russian: "rus",
             Languages.Italian: "ita",
-            Languages.Italian: "hol",
+            Languages.Dutch: "hol",
             Languages.Swedish: "swe",
             Languages.Hungarian: "hun",
             Languages.Thai: "tha",

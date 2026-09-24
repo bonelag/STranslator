@@ -21,11 +21,13 @@ class playonce:
 
     def __init__(self, fileormem, volume) -> None:
         self.handle = 0
-        self.__play(fileormem, volume)
         self.idle = True
+        self.__play(fileormem, volume)
 
     def __del__(self):
-        self.__stop()
+        _ = self.handle
+        self.handle = 0
+        NativeUtils.bass_handle_free(_)
 
     @property
     def isplaying(self):
@@ -42,11 +44,6 @@ class playonce:
             self.idle = False
         elif isinstance(data, types.GeneratorType):
             self.___push_data_thread(data, volume)
-
-    def __stop(self):
-        _ = self.handle
-        self.handle = 0
-        NativeUtils.bass_handle_free(_)
 
 
 def bass_code_cast(bs, fr="mp3"):
@@ -110,9 +107,9 @@ class series_audioplayer:
                 while _playonce.isplaying:
                     time.sleep(0.1)
                     if self.tasks and not (
-                        globalconfig.get("ttsnointerrupt", False) and (not self.tasks[-1])
+                        globalconfig.get("ttsnointerrupt", False)
+                        and (not self.tasks[-1])
                     ):
-                        print(self.tasks)
                         break
                 else:
                     if self.playovercallback:

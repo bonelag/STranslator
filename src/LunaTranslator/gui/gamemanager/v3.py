@@ -6,6 +6,7 @@ from myutils.config import (
     savehook_new_data,
     savegametaged,
     get_launchpath,
+    ui_settings,
     extradatas,
     globalconfig,
 )
@@ -24,7 +25,7 @@ from gui.usefulwidget import (
     MyInputDialog,
     request_delete_ok,
     IconButton,
-    getcolorbutton,
+    ColorButton,
     getspinbox,
     SplitLine,
 )
@@ -85,7 +86,7 @@ class clickitem(QWidget):
         self.bottommask.resize(a0.size())
         self.maskshowfileexists.resize(a0.size())
         self.bottomline.resize(a0.size())
-        size = globalconfig["dialog_savegame_layout"]["listitemheight"]
+        size = ui_settings["dialog_savegame_layout"].get("listitemheight", 30)
         margin = min(3, int(size / 15))
         self.lay1.setContentsMargins(margin, margin, margin, margin)
         self._.setFixedSize(QSize(size - 2 * margin, size - 2 * margin))
@@ -126,6 +127,7 @@ class clickitem(QWidget):
         _ = QLabel(savehook_new_data[uid]["title"])
         # _.setWordWrap(True)
         _.setToolTip(savehook_new_data[uid]["title"])
+        _.setAccessibleName(savehook_new_data[uid]["title"])
         self._2 = _
         _.setObjectName("savegame_textfont2")
         self.lay.addWidget(_)
@@ -633,32 +635,37 @@ class pixwrapper(QSplitter):
 
 class dialog_savedgame_v3(QSplitter):
     def createsettings(self, formLayout: QFormLayout):
-        for key, name in [
-            ("listitemheight", "高度"),
-        ]:
-            spin = getspinbox(10, 1000, globalconfig["dialog_savegame_layout"], key)
-            formLayout.addRow(name, spin)
-            spin.valueChanged.connect(self.callchange)
-            formLayout.addRow(
-                "字体",
-                getfonteditor(
-                    d=globalconfig, k="savegame_textfont2", callback=self.setstyle
-                ),
-            )
+
+        spin = getspinbox(
+            10,
+            1000,
+            ui_settings["dialog_savegame_layout"],
+            "listitemheight",
+            default=30,
+        )
+        formLayout.addRow("高度", spin)
+        spin.valueChanged.connect(self.callchange)
+        formLayout.addRow(
+            "字体",
+            getfonteditor(
+                d=globalconfig, k="savegame_textfont2", callback=self.setstyle
+            ),
+        )
         formLayout.addRow(SplitLine())
-        for key, name in [
-            ("backcolor3", "颜色"),
-            ("onselectcolor3", "颜色_选中时"),
-            ("onfilenoexistscolor3", "游戏不存在时颜色"),
+        for key, name, default in [
+            ("backcolor3", "颜色", "#40ffffff"),
+            ("onselectcolor3", "颜色_选中时", "#40007fff"),
+            ("onfilenoexistscolor3", "游戏不存在时颜色", "#40acacac"),
         ]:
             formLayout.addRow(
                 name,
-                getcolorbutton(
+                ColorButton(
                     self,
-                    globalconfig["dialog_savegame_layout"],
+                    ui_settings["dialog_savegame_layout"],
                     key,
                     callback=self.setstyle,
                     alpha=True,
+                    default=default,
                 ),
             )
 
@@ -803,7 +810,7 @@ class dialog_savedgame_v3(QSplitter):
 
     def callchange(self, _=None):
         self.stack.setheight(
-            globalconfig["dialog_savegame_layout"]["listitemheight"] + 1
+            ui_settings["dialog_savegame_layout"].get("listitemheight", 30) + 1
         )
         self.stack.directshow_1()
 
@@ -819,13 +826,15 @@ class dialog_savedgame_v3(QSplitter):
         style = "#{}{{ {} }}".format(key, _style)
 
         style += "#savegame_existsTrue{{background-color:{};}}".format(
-            globalconfig["dialog_savegame_layout"]["backcolor3"]
+            ui_settings["dialog_savegame_layout"].get("backcolor3", "#40ffffff")
         )
         style += "#savegame_existsFalse{{background-color:{};}}".format(
-            globalconfig["dialog_savegame_layout"]["onfilenoexistscolor3"]
+            ui_settings["dialog_savegame_layout"].get(
+                "onfilenoexistscolor3", "#40acacac"
+            )
         )
         style += "#savegame_onselectcolor1{{background-color: {};}}".format(
-            globalconfig["dialog_savegame_layout"]["onselectcolor3"]
+            ui_settings["dialog_savegame_layout"].get("onselectcolor3", "#40007fff")
         )
         self.stack.setStyleSheet(style)
 
@@ -847,6 +856,8 @@ class dialog_savedgame_v3(QSplitter):
             group0.w(idx2).click()
         except:
             pass
+
+    leave = pyqtSignal(bool)
 
     def __init__(self, parent) -> None:
         super().__init__(parent)
@@ -881,7 +892,7 @@ class dialog_savedgame_v3(QSplitter):
 
         self.stack = stackedlist11(self)
         self.stack.setheight(
-            globalconfig["dialog_savegame_layout"]["listitemheight"] + 1
+            ui_settings["dialog_savegame_layout"].get("listitemheight", 30) + 1
         )
         self.stack.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.stack.customContextMenuRequested.connect(self.stack_showmenu)
@@ -909,13 +920,21 @@ class dialog_savedgame_v3(QSplitter):
             )
         )
         self.righttop.addTab(self.pixview, "_画廊_")
+        w = QWidget()
+        self.leave.connect(w.setHidden)
+        self.righttop.setCornerWidget(w)
+        hbox = QHBoxLayout(w)
+        hbox.setSpacing(0)
+        parent.createviewswitch(hbox)
         self.addWidget(self.righttop)
         self.setObjectName("NOBORDER")
 
         def __(_):
-            globalconfig["dialog_savegame_layout"]["listitemwidth_2"] = self.sizes()
+            ui_settings["dialog_savegame_layout"]["listitemwidth_2"] = self.sizes()
 
-        self.setSizes(globalconfig["dialog_savegame_layout"]["listitemwidth_2"])
+        self.setSizes(
+            ui_settings["dialog_savegame_layout"].get("listitemwidth_2", [300, 500])
+        )
         self.splitterMoved.connect(__)
         self.setStretchFactor(0, 0)
         self.setStretchFactor(1, 1)

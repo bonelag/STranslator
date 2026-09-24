@@ -50,13 +50,10 @@ std::tuple<float, float, float, float> TextBox2XYXY(const TextBox &box)
 }
 cv::Mat getRotateCropImage(const cv::Mat &src, const TextBox &box, Directional mode)
 {
-    cv::Mat image;
-    src.copyTo(image);
     TextBox points = box;
     auto &&[left, top, right, bottom] = TextBox2XYXY(box);
 
-    cv::Mat imgCrop;
-    image(cv::Rect(left, top, right - left, bottom - top)).copyTo(imgCrop);
+    cv::Mat imgCrop = src(cv::Rect(left, top, right - left, bottom - top));
 
     for (auto &point : points)
     {
@@ -161,9 +158,7 @@ float boxScoreFast(const TextBox &boxes, const cv::Mat &pred)
     int npts[] = {4};
     cv::fillPoly(mask, pts, npts, 1, cv::Scalar(1));
 
-    cv::Mat croppedImg;
-    pred(cv::Rect(minX, minY, maxX - minX + 1, maxY - minY + 1))
-        .copyTo(croppedImg);
+    cv::Mat croppedImg = pred(cv::Rect(minX, minY, maxX - minX + 1, maxY - minY + 1));
 
     auto score = (float)cv::mean(croppedImg, mask)[0];
     return score;
@@ -205,7 +200,7 @@ cv::RotatedRect unClip(const TextBox &box, float unClipRatio)
 
     for (size_t j = 0; j < soln.size(); j++)
     {
-        for (size_t i = 0; i < soln[soln.size() - 1].size(); i++)
+        for (size_t i = 0; i < soln[j].size(); i++)
         {
             points.emplace_back(cv::Point2f{float(soln[j][i].x), float(soln[j][i].y)});
         }
@@ -261,9 +256,9 @@ TextLine CrnnNet::scoreToTextLine(const std::vector<float> &outputData, size_t h
     {
         size_t start = i * w;
         size_t stop = (i + 1) * w;
-        if (stop > dataSize - 1)
+        if (stop > dataSize)
         {
-            stop = (i + 1) * w - 1;
+            stop = dataSize;
         }
         maxIndex = int(argmax(&outputData[start], &outputData[stop]));
         // maxValue = float(*std::max_element(&outputData[start], &outputData[stop]));
@@ -380,19 +375,10 @@ std::vector<TextBox> DbNet::getTextBoxes(const cv::Mat &src, ScaleParam &s, floa
     //-----Data preparation-----
     int outHeight = (int)outputShape[2];
     int outWidth = (int)outputShape[3];
-    size_t area = outHeight * outWidth;
 
-    std::vector<float> predData(area, 0.0);
-    std::vector<unsigned char> cbufData(area, ' ');
-
-    for (int i = 0; i < area; i++)
-    {
-        predData[i] = float(outputData[i]);
-        cbufData[i] = (unsigned char)((outputData[i]) * 255);
-    }
-
-    cv::Mat predMat(outHeight, outWidth, CV_32F, (float *)predData.data());
-    cv::Mat cBufMat(outHeight, outWidth, CV_8UC1, (unsigned char *)cbufData.data());
+    cv::Mat predMat(outHeight, outWidth, CV_32F, (float *)outputData.data());
+    cv::Mat cBufMat;
+    predMat.convertTo(cBufMat, CV_8U, 255.0);
 
     //-----boxThresh-----
     const double maxValue = 255;
@@ -466,8 +452,8 @@ std::vector<TextBlock> OcrLite::detect_internal(const cv::Mat &src, const int &p
             p.x -= padding;
             p.y -= padding;
         }
-        TextBlock textBlock{textBoxes[i], textLines[i]};
-        textBlocks.emplace_back(textBlock);
+        TextBlock textBlock{std::move(textBoxes[i]), std::move(textLines[i])};
+        textBlocks.emplace_back(std::move(textBlock));
     }
 
     return textBlocks;

@@ -1474,6 +1474,7 @@ namespace
         patch_fun = []()
         {
           PatchA::replace_near_call(paddr + 5, (ULONG)PatchA::Private::isLeadByteChar);
+          dont_detach = true;
         };
       }
       return NewHook(hp, "EmbedWillplusA");

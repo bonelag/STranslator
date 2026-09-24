@@ -3,7 +3,12 @@ import gobject, os
 import qtawesome, NativeUtils, functools, json
 from myutils.config import globalconfig, _TR
 from myutils.utils import get_time_stamp
-from gui.usefulwidget import closeashidewindow, WebviewWidget, Exteditor
+from gui.usefulwidget import (
+    closeashidewindow,
+    WebviewWidget,
+    Exteditor,
+    create_centered_rect,
+)
 from gui.dynalang import LAction
 from urllib.parse import quote
 from myutils.wrapper import threader
@@ -13,6 +18,7 @@ from gui.setting.display_text import extrahtml
 from network.server.servicecollection_1 import WSForEach, transhistwsoutputsave
 import time, threading, windows
 from NativeUtils import MenuItem
+from gui.RichMessageBox import RichMessageBox
 
 
 class somecommon:
@@ -261,23 +267,31 @@ class wvtranshist(WebviewWidget, somecommon):
     pluginsedit = pyqtSignal()
     reloadx = pyqtSignal()
 
+    def crashed_callback(self, info: bytes):
+        RichMessageBox(
+            self,
+            _TR("错误"),
+            _TR("Webview2崩溃，将切换为Qt显示。") + "\n" + info.decode(),
+        )
+        self.useweb()
+
     def on_menu(self, selecttext):
         if selecttext:
             return [
                 MenuItem(
-                    text=_TR("查词"),
+                    text="查词",
                     clicked=threader(
                         lambda: gobject.base.searchwordW.search_word.emit(
-                            selecttext.replace("\n", "").strip(), None, False
+                            selecttext.replace("\n", "")
                         )
                     ),
                 ),
                 MenuItem(
-                    text=_TR("翻译"),
+                    text="翻译",
                     clicked=functools.partial(gobject.base.textgetmethod, selecttext),
                 ),
                 MenuItem(
-                    text=_TR("朗读"),
+                    text="朗读",
                     clicked=functools.partial(gobject.base.read_text, selecttext),
                 ),
             ]
@@ -292,54 +306,54 @@ class wvtranshist(WebviewWidget, somecommon):
                 self.p.maybexocr()
 
             return [
-                MenuItem(text=_TR("清空"), clicked=self.clear),
-                MenuItem(text=_TR("字体"), clicked=self.seletcfont),
+                MenuItem(text="清空", clicked=self.clear),
+                MenuItem(text="字体", clicked=self.seletcfont),
                 MenuItem(
-                    text=_TR("自动滚动到最后"),
+                    text="自动滚动到最后",
                     clicked=self.scrollend,
                     checkable=True,
                     checked=gobject.tempconfig.get("autoscroll", True),
                 ),
                 MenuItem(issep=True),
                 MenuItem(
-                    text=_TR("保存"),
+                    text="保存",
                     clicked=lambda: sharedfunctions.savetxt(self, self.p.trace),
                 ),
                 (
                     MenuItem(
-                        text=_TR("保存_SRT"),
+                        text="保存_SRT",
                         clicked=lambda: sharedfunctions.savesrt(self, self.p.trace),
                     )
                     if ctrlx
                     else None
                 ),
                 MenuItem(
-                    text=_TR("自动保存"),
+                    text="自动保存",
                     clicked=self.autosavecb,
                     checkable=True,
                     checked=globalconfig["history"]["autosave"],
                 ),
                 MenuItem(issep=True),
                 MenuItem(
-                    text=_TR("显示原文"),
+                    text="显示原文",
                     clicked=self.showhideraw_,
                     checkable=True,
                     checked=globalconfig["history"]["showorigin"],
                 ),
                 MenuItem(
-                    text=_TR("显示翻译"),
+                    text="显示翻译",
                     clicked=self.showtrans_,
                     checkable=True,
                     checked=globalconfig["history"]["showtrans"],
                 ),
                 MenuItem(
-                    text=_TR("显示翻译器名称"),
+                    text="显示翻译器名称",
                     clicked=self.showtransname_,
                     checkable=True,
                     checked=globalconfig["history"]["showtransname"],
                 ),
                 MenuItem(
-                    text=_TR("显示时间"),
+                    text="显示时间",
                     clicked=self.showhidetime_,
                     checkable=True,
                     checked=globalconfig["history"]["showtime"],
@@ -347,7 +361,7 @@ class wvtranshist(WebviewWidget, somecommon):
                 MenuItem(issep=True) if isocr else None,
                 (
                     MenuItem(
-                        text=_TR("打开窗口时暂停自动OCR"),
+                        text="打开窗口时暂停自动OCR",
                         clicked=_,
                         checkable=True,
                         checked=globalconfig.get("suspendocrwhentranshistshow", False),
@@ -357,13 +371,13 @@ class wvtranshist(WebviewWidget, somecommon):
                 ),
                 MenuItem(issep=True),
                 MenuItem(
-                    text=_TR("使用Webview2显示"),
+                    text="使用Webview2显示",
                     clicked=self.useweb,
                     checkable=True,
                     checked=globalconfig["history"]["usewebview2"],
                 ),
                 MenuItem(
-                    text=_TR("附加HTML"),
+                    text="附加HTML",
                     clicked=functools.partial(
                         extrahtml,
                         self,
@@ -373,14 +387,14 @@ class wvtranshist(WebviewWidget, somecommon):
                     ),
                 ),
                 MenuItem(
-                    text=_TR("附加浏览器插件"),
+                    text="附加浏览器插件",
                     clicked=threader(self.reloadx.emit),
                     checkable=True,
                     checked=globalconfig["history"]["webviewLoadExt"],
                 ),
                 (
                     MenuItem(
-                        text=_TR("浏览器插件"),
+                        text="浏览器插件",
                         clicked=threader(self.pluginsedit.emit),
                     )
                     if globalconfig["history"]["webviewLoadExt"]
@@ -404,7 +418,6 @@ class wvtranshist(WebviewWidget, somecommon):
     def __init__(self, p: "transhist"):
         super().__init__(p, loadext=globalconfig["history"]["webviewLoadExt"])
         self.bind("calllunaloadready", self.calllunaloadready)
-        gobject.tempconfig = {}
         self.pluginsedit.connect(functools.partial(Exteditor, self))
         self.reloadx.connect(self.appendext)
         self.loadex()
@@ -582,13 +595,11 @@ class Qtranshist(QPlainTextEdit):
             globalconfig["history"]["usewebview2"] = webview2qt.isChecked()
             self.p.loadviewer(True)
         elif action == baocunauto:
-            globalconfig["history"]["autosave"] = baocunauto.isCheckable()
-            if baocunauto.isCheckable():
+            globalconfig["history"]["autosave"] = baocunauto.isChecked()
+            if baocunauto.isChecked():
                 sharedfunctions.autosavecheckifneedninit(self.p.trace)
         elif action == search:
-            gobject.base.searchwordW.search_word.emit(
-                self.textCursor().selectedText(), None, False
-            )
+            gobject.base.searchwordW.search_word.emit(self.textCursor().selectedText())
         elif action == translate:
             gobject.base.textgetmethod(self.textCursor().selectedText(), False)
         elif action == tts:
@@ -666,7 +677,13 @@ class transhist(closeashidewindow):
     getnewtranssignal = pyqtSignal(str, str)
 
     def __init__(self, parent):
-        super(transhist, self).__init__(parent, globalconfig["hist_geo"])
+        super(transhist, self).__init__(
+            parent,
+            posinit=globalconfig.get(
+                "hist_geo", create_centered_rect(800, 400).getRect()
+            ),
+            possave=functools.partial(globalconfig.__setitem__, "hist_geo"),
+        )
         self.trace = []
         self.textOutput = None
         # self.setWindowFlags(self.windowFlags()&~Qt.WindowMinimizeButtonHint)

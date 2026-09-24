@@ -1,5 +1,5 @@
 // Magpie\AdaptersService.cpp
-#ifndef WINXPEXTRADEF
+#ifdef WINXP
 #include "../xpundef/xp_dxgi.h"
 #else
 #include <dxgi1_6.h>
@@ -36,7 +36,8 @@ public:
     }
 
     // Event<> AdaptersChanged;
-    void (*AdaptersChanged)();
+    std::vector<void (*)()> AdaptersChangeds;
+    std::mutex adaptersChangedsLock;
 
 private:
     AdaptersService() = default;
@@ -62,7 +63,10 @@ struct DirectXHelper
 };
 bool AdaptersService::Initialize(void (*callback)()) noexcept
 {
-    AdaptersChanged = callback;
+    {
+        std::lock_guard _(adaptersChangedsLock);
+        AdaptersChangeds.push_back(callback);
+    }
     CComPtr<IDXGIFactory7> dxgiFactory;
 
     HRESULT hr = CreateDXGIFactory1(IID_PPV_ARGS(&dxgiFactory));
@@ -87,7 +91,7 @@ bool AdaptersService::Initialize(void (*callback)()) noexcept
         _adapterInfos.push_back({adapterIdx, desc.VendorId, desc.DeviceId, desc.Description});
     }
 
-    AdaptersChanged();
+    callback();
 
     return true;
 }
@@ -247,7 +251,14 @@ bool AdaptersService::_GatherAdapterInfos(
                            return info.idx == std::numeric_limits<uint32_t>::max();
                        }),
         adapterInfos.end());
-    AdaptersChanged();
+
+    std::vector<void (*)()> callbacks;
+    {
+        std::lock_guard _(adaptersChangedsLock);
+        callbacks = AdaptersChangeds;
+    }
+    for (auto &&_ : callbacks)
+        _();
     return true;
 }
 
@@ -303,12 +314,25 @@ void AdaptersService::_MonitorThreadProc() noexcept
 }
 DECLARE_API void AdaptersServiceStartMonitor(void (*callback)())
 {
-    if (!AdaptersService::Get().Initialize(callback))
+    static bool first = true;
+    if (first)
     {
-        AdaptersService::Get().Uninitialize();
-        return;
+        first = false;
+        if (!AdaptersService::Get().Initialize(callback))
+        {
+            AdaptersService::Get().Uninitialize();
+            return;
+        }
+        AdaptersService::Get().StartMonitor();
     }
-    AdaptersService::Get().StartMonitor();
+    else
+    {
+        callback();
+        {
+            std::lock_guard _(AdaptersService::Get().adaptersChangedsLock);
+            AdaptersService::Get().AdaptersChangeds.push_back(callback);
+        }
+    }
 }
 DECLARE_API void AdaptersServiceUninitialize()
 {

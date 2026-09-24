@@ -170,7 +170,7 @@ bool Yuris::InsertYuris2Hook()
   // );
   HookParam hp;
   hp.address = addr;
-  hp.type = USING_STRING | USING_SPLIT | NO_CONTEXT; // disable context that will cause thread split
+  hp.type = USING_STRING | USING_SPLIT | NO_CONTEXT | INLINE_HOOK; // disable context that will cause thread split
   hp.offset = stackoffset(3);
   hp.split = stackoffset(5);
 
@@ -436,7 +436,7 @@ bool Yuris::yuris8()
     */
     HookParam hp;
     hp.address = calltarget;
-    hp.type = USING_STRING | NO_CONTEXT | FULL_STRING;
+    hp.type = USING_STRING | NO_CONTEXT | FULL_STRING | INLINE_HOOK;
     hp.offset = regoffset(ecx);
     hp.codepage = codepage;
     hp.text_fun = [](hook_context *context, HookParam *hp, TextBuffer *buffer, uintptr_t *split)

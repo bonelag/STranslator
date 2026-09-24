@@ -64,6 +64,7 @@ def tryreadconfig2(path):
     return x
 
 
+ui_settings: "dict[str, dict[str, str|dict|list] | list[str|dict] | str]" = tryreadconfig("ui_settings.json")
 static_data: "dict[str, dict[str, str|dict|list] | list[str|dict] | str]" = (
     tryreadconfig2("static_data.json")
 )
@@ -229,7 +230,7 @@ for gameconfig in savehook_new_data.values():
     for __k, __v in _dfsavehook.items():
         if __k not in gameconfig:
             if isinstance(__v, (list, dict)):
-                __v = __v.copy()
+                __v = copy.deepcopy(__v)
             gameconfig[__k] = __v
 
 
@@ -367,10 +368,11 @@ syncconfig(globalconfig, defaultglobalconfig)
 syncconfig(transerrorfixdictconfig, defaulterrorfix)
 
 syncconfig(magpie_config, dfmagpie_config)
-syncconfig(
-    magpie_config["profiles"][globalconfig.get("profiles_index", 0)],
-    dfmagpie_config["profiles"][0],
-)
+for profile in magpie_config["profiles"]:
+    syncconfig(
+        profile,
+        dfmagpie_config["profiles"][0],
+    )
 syncconfig(translatorsetting, translatordfsetting)
 
 syncconfig(ocrsetting, ocrdfsetting)
@@ -396,6 +398,65 @@ for key in globalconfig["toolbutton"]["rank2"]:
         ___.append(key)
 for key in ___:
     globalconfig["toolbutton"]["rank2"].remove(key)
+
+
+def migrate_ui_settings():
+    for k in (
+        "dialog_savegame_layout",
+        "transparent_pic",
+        "backtransparent",
+        "transparent_EX",
+        "transparent",
+        "transparent_tool",
+        "backgroundpic",
+        "settingfonttype",
+        "theme3",
+        "backcolor",
+        "backcolor_tool",
+        "darklight2",
+        "settingfontsize",
+        "force_rect",
+        "WindowBackdrop",
+        "button_color_normal",
+        "buttoncolor_1",
+        "buttoncolor",
+        "buttonsize",
+        "yuanjiao_r",
+        "yuanjiao_sys",
+        "WindowEffect",
+        "WindowEffect_shadow",
+        "text_area_background",
+        "text_area_background_color",
+        "text_area_background_alpha",
+        "text_area_background_r",
+        "text_area_background_w",
+        "text_area_background_h",
+
+        "WordViewTooltipColor",
+        "WordViewTooltipContentColor",
+        "WordViewTooltipHideFocus",
+        "WordViewTooltipHideLeave",
+        "WordViewTooltipRadius",
+        "WordViewTooltipRadiusSys",
+        "WordViewTooltipBorder",
+        "WordViewTooltipDWM",
+        "WordViewTooltipDWM_1",
+        "word_hover_bg_color",
+        "word_hover_text_color",
+        "word_hover_border_R",
+        "word_hover_border_R_SYS",
+        "word_hover_border",
+        "word_hover_DWM",
+        "word_hover_DWM_1",
+
+    ):
+        if k in globalconfig:
+            ui_settings[k] = globalconfig.pop(k)
+    if "dialog_savegame_layout" not in ui_settings:
+        ui_settings["dialog_savegame_layout"] = {}
+
+
+migrate_ui_settings()
 
 language_last = None
 
@@ -519,6 +580,7 @@ def saveallconfig(test=False):
         safesave(errorcollect, gobject.getconfig("config.json"), globalconfig)
     finally:
         globalconfig["debugocr"] = debug_state
+    safesave(errorcollect, gobject.getconfig("ui_settings.json"), ui_settings)
     safesave(
         errorcollect, gobject.getconfig("postprocessconfig.json"), postprocessconfig
     )
@@ -636,11 +698,12 @@ def checkintegrity():
 
     dllshared = [
         "LunaHook/" + ("LunaHost32.dll", "LunaHost64.dll")[runtime_bit_64],
-        "LunaSubprocess32.exe",
-        "LunaSubprocess64.exe",
+        "LunaSubProcess32.exe",
+        "LunaSubProcess64.exe",
         "Magpie/Magpie.Core.exe" if not runtime_for_xp else None,
         "LunaHook/LunaHook32.dll",
         "LunaHook/LunaHook64.dll",
+        "LunaHook/LunaTmpFontLoader.dll",
     ]
     for f in dllshared:
         if f:
@@ -653,6 +716,6 @@ def checkintegrity():
         return 1, _TR(
             "找不到重要组件：\n{modules}\n请重新下载并关闭杀毒软件后重试"
         ).format(modules="\n".join(collect)) + '\n<a href="{}">{}</a>'.format(
-            dynamiclink("README.html#anchor-commonerros", docs=True), _TR("说明")
+            dynamiclink("README.html#anchor-commonerrors", docs=True), _TR("说明")
         )
     return None

@@ -1,8 +1,9 @@
 import gobject, os, uuid
 from ocrengines.baseocrclass import baseocr, OCRResult
+from gobject import unique_ptr
 import NativeUtils, threading
-import winreg
 from traceback import print_exc
+from myutils.regedit import CURRENT_USER
 
 
 class wcocr:
@@ -16,7 +17,10 @@ class wcocr:
                 wechatocr_path, wechat_path = _
                 if any([not os.path.exists(_) for _ in (wechatocr_path, wechat_path)]):
                     continue
-                self.pobj = NativeUtils.wcocr_init(wechatocr_path, wechat_path)
+                self.pobj = unique_ptr(
+                    NativeUtils.wcocr_init(wechatocr_path, wechat_path),
+                    NativeUtils.wcocr_destroy,
+                )
                 if self.pobj:
                     break
             except:
@@ -35,23 +39,10 @@ class wcocr:
         return ocr, mojo
 
     def findwechat(self):
-        try:
-            # 4.x
-            k = winreg.OpenKeyEx(
-                winreg.HKEY_CURRENT_USER,
-                r"SOFTWARE\Tencent\Weixin",
-                0,
-                winreg.KEY_QUERY_VALUE,
-            )
-        except:
-            k = winreg.OpenKeyEx(
-                winreg.HKEY_CURRENT_USER,
-                r"SOFTWARE\Tencent\WeChat",
-                0,
-                winreg.KEY_QUERY_VALUE,
-            )
-        base = winreg.QueryValueEx(k, "InstallPath")[0]
-        winreg.CloseKey(k)
+        k = CURRENT_USER.open(r"SOFTWARE\Tencent\Weixin", query=True)
+        if not k:
+            k = CURRENT_USER.open(r"SOFTWARE\Tencent\WeChat", query=True)
+        base = k.query("InstallPath")
         WeChatexe = os.path.join(base, "WeChat.exe")
         if not os.path.exists(WeChatexe):
             # 4.x
@@ -82,9 +73,6 @@ class wcocr:
                 r"extracted\WeChatOCR.exe",
             )
         return wechatocr_path, wechat_path
-
-    def __del__(self):
-        NativeUtils.wcocr_destroy(self.pobj)
 
     def ocr(self, imagebinary):
         fname = gobject.gettempdir(str(uuid.uuid4()) + ".png")

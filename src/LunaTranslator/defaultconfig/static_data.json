@@ -189,15 +189,15 @@
         ],
         "tts": [
             {
-                "name": "NeoSpeech",
+                "name": "A.I.VOICE",
                 "links": [
                     {
-                        "name": "Misaki",
-                        "link": "/Resource/voice/NeoSpeech.Japanese.Misaki.zip"
+                        "name": "A.I.VOICE",
+                        "link": "https://aivoice.jp/member/downloads/aivoice"
                     },
                     {
-                        "name": "Show",
-                        "link": "/Resource/voice/NeoSpeech.TTS.NeoSpeech.Japanese.Show_v3.10.0.0.zip"
+                        "name": "A.I.VOICE2",
+                        "link": "https://aivoice.jp/member/downloads/aivoice2"
                     }
                 ]
             },
@@ -224,7 +224,7 @@
                 ]
             },
             {
-                "name": "VoiceRoid2",
+                "name": "VoiceRoid",
                 "links": [
                     {
                         "name": "整合包_[[結月ゆかり]]",

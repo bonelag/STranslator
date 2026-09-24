@@ -32,6 +32,7 @@
 #include <sstream>
 #include <locale>
 #include <cstdint>
+#include <cstring>
 #include <list>
 #include <type_traits>
 #include <utility>
@@ -40,12 +41,14 @@
 #include <shlobj.h>
 #include <Shlwapi.h>
 
+extern "C" IMAGE_DOS_HEADER __ImageBase;
+
+
 #include "stringutils.h"
 #include "utils.h"
 #include "defs.h"
 #include "const.h"
 #include "types.h"
-#include "hookcode.h"
 #include "winevent.hpp"
 #include "lrucache.hpp"
 #include "InfoStrings.h"

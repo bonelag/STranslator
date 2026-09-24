@@ -240,6 +240,10 @@ namespace
         StringFilter(buffer, TEXTANDLEN("@I"));
         StringFilter(buffer, TEXTANDLEN("@P"));
     }
+    void ULJS00203(TextBuffer *buffer, HookParam *hp)
+    {
+        StringFilter(buffer, TEXTANDLEN("@r"));
+    }
     void ULJM06147(TextBuffer *buffer, HookParam *hp)
     {
         CharFilter(buffer, L'R');
@@ -418,7 +422,7 @@ namespace
             if (0) //_this < 0x8200)
             {
                 auto h = _byteswap_ushort(_this + 0x11e);
-                ws += StringToWideString(std::string((char *)&h, 2), 932).value_or(std::wstring(L"[") + hex + L"]");
+                ws += StringToWideString(std::string_view((char *)&h, 2), 932).value_or(std::wstring(L"[") + hex + L"]");
             }
             else
             {
@@ -1633,6 +1637,8 @@ struct emfuncinfoX
     emfuncinfo info;
 };
 static const emfuncinfoX emfunctionhooks_1[] = {
+    // ソラユメportable
+    {0x8828924, {FULL_STRING, 1, 0, 0, ULJS00203, "ULJS00203"}},
     // Ｌの季節 ダブルポケット
     {0x887B6E8, {FULL_STRING, 0, 0, 0, ULJM06040_1, "ULJM05555"}},
     // あかね色に染まる坂ぽ～たぶる
@@ -1840,7 +1846,9 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     // デス・コネクション　ポータブル
     {0x8855594, {FULL_STRING, 0, 0, 0, ULJM05823, "ULJM05823"}},
     // しらつゆの怪
-    {0x888A26C, {0, 0, 0, 0, ULJM06289, "ULJM06289"}},
+    {0x888A26C, {FULL_STRING, 0, 0, 0, ULJM06289, "ULJM06289"}},
+    {0x8919E30, {FULL_STRING, 0, 0, 0, ULJM06289, "ULJM06289"}},
+    {0x8962EA0, {FULL_STRING, 1, 0, 0, ULJM06289, "ULJM06289"}},
     // ダイヤの国のアリス～Wonderful Wonder World～
     {0x8857E3C, {0, 0, 0, 0, 0, "ULJM06216"}},
     // ダイヤの国のアリス～ Wonderful Mirror World ～

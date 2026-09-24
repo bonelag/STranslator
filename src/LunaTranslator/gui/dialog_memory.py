@@ -1,15 +1,17 @@
 from qtsymbols import *
 import gobject, qtawesome, os, json, functools, uuid
-import NativeUtils, re, shutil
+import NativeUtils, re, shutil, threading
 from myutils.config import globalconfig, get_launchpath, savehook_new_data, relpath
 from myutils.wrapper import Singleton
 from myutils.utils import (
     getimagefilefilter,
     getimageformat,
     loopbackrecorder,
+    ffmpeg_record,
     _TR,
     get_time_stamp,
 )
+from myutils.wrapper import threader
 from gui.rangeselect import rangeselct_function
 from myutils.ocrutil import imageCut
 from myutils.mecab import mecab
@@ -17,10 +19,13 @@ from myutils.hwnd import grabwindow, getExeIcon
 from gui.usefulwidget import (
     saveposwindow,
     makesubtab_lazy,
+    RichMessageBox,
     request_delete_ok,
     MyInputDialog,
     IconButton,
     auto_select_webview,
+    create_centered_rect,
+    getIconSwitch,
 )
 from gui.dynalang import LAction
 from gui.markdownhighlighter import MarkdownHighlighter
@@ -298,7 +303,10 @@ class dialog_memory(saveposwindow):
             parent,
             flags=Qt.WindowType.WindowCloseButtonHint
             | Qt.WindowType.WindowMinMaxButtonsHint,
-            poslist=globalconfig["memorydialoggeo"],
+            posinit=globalconfig.get(
+                "memorydialoggeo", create_centered_rect(800, 600).getRect()
+            ),
+            possave=functools.partial(globalconfig.__setitem__, "memorydialoggeo"),
         )
         self.show()
         self.setWindowTitle(
@@ -321,24 +329,24 @@ class dialog_memory(saveposwindow):
         self.buttonslayout.setSpacing(0)
         self.btnplus = IconButton(parent=self, icon="fa.plus")
         self.btnplus.clicked.connect(self._plus)
-        self.switch = IconButton(
-            parent=self, icon="fa.edit", checkable=True, tips="编辑_/_查看"
-        )
-        self.switch.setChecked(True)
-        self.switch.clicked.connect(self.switchreadonly)
+        self.switch = getIconSwitch(icon="fa.edit", default=True, tips="编辑_/_查看", callback=self.switchreadonly)
         self.insertpicbtn = IconButton(
             parent=self, icon="fa.picture-o", tips="插入图片"
         )
         self.insertaudiobtn = IconButton(parent=self, icon="fa.music", tips="插入音频")
         self.textbtn = IconButton(parent=self, icon="fa.text-height", tips="插入文本")
+        self.videobtn = IconButton(parent=self, icon="fa.film", tips="插入视频")
         openfile = IconButton(parent=self, icon="fa.external-link", tips="打开文件")
+        self.videosema = threading.Semaphore(0)
         openfile.clicked.connect(lambda: self.editororview.sourcefileopen())
         self.buttonslayout.addWidget(openfile)
         self.buttonslayout.addWidget(IconButton(none=True))
         self.buttonslayout.addWidget(self.textbtn)
         self.buttonslayout.addWidget(self.insertaudiobtn)
         self.buttonslayout.addWidget(self.insertpicbtn)
+        self.buttonslayout.addWidget(self.videobtn)
         self.buttonslayout.addWidget(self.switch)
+        self.videobtn.clicked.connect(self.Videoselect)
         self.insertpicbtn.clicked.connect(self.Picselect)
         self.insertaudiobtn.clicked.connect(self.AudioSelect)
         self.textbtn.clicked.connect(self.TextInsert)
@@ -375,7 +383,7 @@ class dialog_memory(saveposwindow):
                 QMessageBox.critical(
                     self, _TR("错误"), _TR("系统不支持环回录制")
                 )  # str(e))
-                self.insertaudiobtn.click()
+                self.insertaudiobtn.setIconStr("fa.music")
         else:
             self.is_recording = False
             if not self.recorders:
@@ -386,6 +394,7 @@ class dialog_memory(saveposwindow):
             tgt = os.path.join(os.path.dirname(file), tmsp + os.path.splitext(file)[1])
             shutil.move(file, tgt)
             self.audiocallback(tgt)
+            self.insertaudiobtn.setIconStr("fa.music")
 
     def AudioSelect(self):
         if self.is_recording:
@@ -393,7 +402,7 @@ class dialog_memory(saveposwindow):
             return
         menu = QMenu(self)
         record = LAction("录音", menu)
-        audio = LAction("音频", menu)
+        audio = LAction("选择文件", menu)
         record.setIcon(qtawesome.icon("fa.microphone"))
         audio.setIcon(qtawesome.icon("fa.folder-open"))
         menu.addAction(record)
@@ -401,7 +410,7 @@ class dialog_memory(saveposwindow):
         action = menu.exec(QCursor.pos())
         if action == record:
             self.startorendrecord()
-            self.insertaudiobtn.setIcon(qtawesome.icon("fa.stop"))
+            self.insertaudiobtn.setIconStr("fa.stop")
         elif action == audio:
             f = QFileDialog.getOpenFileName()
             res = f[0]
@@ -418,11 +427,70 @@ class dialog_memory(saveposwindow):
         )
         self.editor.insertPlainText(html)
 
+    def Videoselect(self):
+        if self.is_recording:
+            self.videosema.release()
+            return
+        menu = QMenu(self)
+        crop2 = LAction("区域录制", menu)
+        crophwnd = LAction("窗口录制", menu)
+        select = LAction("选择文件", menu)
+        crop2.setIcon(qtawesome.icon("fa.crop"))
+        crophwnd.setIcon(qtawesome.icon("fa.camera"))
+        select.setIcon(qtawesome.icon("fa.folder-open"))
+        menu.addAction(crop2)
+        menu.addAction(crophwnd)
+        menu.addAction(select)
+        action = menu.exec(QCursor.pos())
+        if action == crop2:
+
+            def ocroncefunction(rect, _):
+                self.selectvedio(rect)
+
+            rangeselct_function(ocroncefunction, self.window())
+        elif action == crophwnd:
+            self.selectvedio()
+        elif action == select:
+            f = QFileDialog.getOpenFileName(filter="*.mp4 *.mkv *.mov *.flv;;*")
+            res = f[0]
+            if not res:
+                return
+            self.selectvedio(res, move=False)
+
+    @threader
+    def selectvedio(self, path: "str|QRect" = None, move=True):
+        if not isinstance(path, str):
+            self.is_recording = True
+            self.videobtn.setIconStr("fa.stop")
+            try:
+                path = ffmpeg_record(self.videosema, path)
+            except Exception as e:
+                self.is_recording = False
+                self.videobtn.setIconStr("fa.film")
+                gobject.base.safeinvokefunction.emit(
+                    functools.partial(RichMessageBox, self, _TR("错误"), str(e))
+                )
+                return
+            self.is_recording = False
+            self.videobtn.setIconStr("fa.film")
+        tgt = os.path.join(self.rwpath, os.path.basename(path))
+        if move:
+            shutil.move(path, tgt)
+        else:
+            shutil.copy(path, tgt)
+        gobject.base.safeinvokefunction.emit(
+            lambda: self.editor.insertPlainText(
+                """\n<video src="{}" controls="controls" style="max-width: 100%; height: auto;"></video>\n""".format(
+                    quote(os.path.basename(path))
+                )
+            )
+        )
+
     def Picselect(self):
         menu = QMenu(self)
         crop2 = LAction("隐藏并截图", menu)
         crophwnd = LAction("窗口截图", menu)
-        select = LAction("图片", menu)
+        select = LAction("选择文件", menu)
         crop2.setIcon(qtawesome.icon("fa.crop"))
         crophwnd.setIcon(qtawesome.icon("fa.camera"))
         select.setIcon(qtawesome.icon("fa.folder-open"))
@@ -435,7 +503,9 @@ class dialog_memory(saveposwindow):
         elif action == crophwnd:
             grabwindow(callback=self.cropcallback1)
         elif action == select:
-            f = QFileDialog.getOpenFileName(filter=getimagefilefilter())
+            f = QFileDialog.getOpenFileName(
+                filter=getimagefilefilter() + " *.avif *.gif;;*"
+            )
             res = f[0]
             if not res:
                 return
@@ -444,7 +514,7 @@ class dialog_memory(saveposwindow):
     def crophide(self):
         def ocroncefunction(rect, img=None):
             if not img:
-                img = imageCut(0, rect[0][0], rect[0][1], rect[1][0], rect[1][1])
+                img = imageCut(0, rect)
             if img.isNull():
                 return
             self.cropcallback(img)
@@ -535,6 +605,7 @@ class dialog_memory(saveposwindow):
         self.insertpicbtn.setVisible(i)
         self.insertaudiobtn.setVisible(i)
         self.textbtn.setVisible(i)
+        self.videobtn.setVisible(i)
 
     def tabmenu(self, position):
         index = self.tab.tabBar().tabAt(position)

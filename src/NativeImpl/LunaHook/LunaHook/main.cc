@@ -1,5 +1,7 @@
 
 #include "MinHook.h"
+#include "lunarpc.h"
+#include "../../fileversion.hpp"
 void HIJACK();
 void detachall();
 #if EMUADD_MAP_MULTI
@@ -16,21 +18,106 @@ WinMutex viewMutex;
 CommonSharedMem *commonsharedmem;
 std::vector<std::wstring> checkFileHelperVector;
 Synchronized<std::map<uint32_t, std::pair<std::string, HookParam>>> delayinserthook;
+AutoHandle<> hookPipe = INVALID_HANDLE_VALUE;
 namespace
 {
-	AutoHandle<> hookPipe = INVALID_HANDLE_VALUE,
-				 mappedFile = INVALID_HANDLE_VALUE,
+	AutoHandle<> mappedFile = INVALID_HANDLE_VALUE,
 				 mappedFile3 = INVALID_HANDLE_VALUE;
 	TextHook (*hooks)[MAX_HOOK];
 	int currentHook = 0;
 }
+
+namespace Msg
+{
+#define vhostinfoA(_type, cp)                                                        \
+	{                                                                                \
+		va_list args;                                                                \
+		va_start(args, text);                                                        \
+		char buf[MESSAGE_SIZE];                                                      \
+		vsnprintf(buf, MESSAGE_SIZE, text, args);                                    \
+		va_end(args);                                                                \
+		rpc::call<rpc::Id::NotifyText>(hookPipe, _type, (UINT)cp, std::string(buf)); \
+	}
+
+#define vhostinfoW(_type)                                                    \
+	{                                                                        \
+		va_list args;                                                        \
+		va_start(args, text);                                                \
+		wchar_t buf[MESSAGE_SIZE];                                           \
+		_vsnwprintf_s(buf, MESSAGE_SIZE, _TRUNCATE, text, args);             \
+		va_end(args);                                                        \
+		rpc::call<rpc::Id::NotifyTextW>(hookPipe, _type, std::wstring(buf)); \
+	}
+
+#define definefunction(funcname, type)             \
+	template <>                                    \
+	void funcname<char>(LPCSTR text, ...)          \
+		vhostinfoA(type, CP_UTF8);                 \
+	template <>                                    \
+	void funcname<wchar_t>(LPCWSTR text, ...)      \
+		vhostinfoW(type);                          \
+	void funcname(UINT codepage, LPCSTR text, ...) \
+		vhostinfoA(type, codepage);
+
+	definefunction(Log, HOSTINFO::Console);
+	definefunction(Warning, HOSTINFO::Warning);
+	definefunction(EmuConnected, HOSTINFO::EmuConnected);
+	definefunction(EmuWarning, HOSTINFO::EmuWarning);
+	definefunction(EngineType, HOSTINFO::EngineType);
+	void EmuGameInfo(const char *id, const char *title, const char *version)
+	{
+		rpc::call<rpc::Id::NotifyEmuGameInfo>(hookPipe, std::string(id), std::string(title), std::string(version ? version : ""));
+	}
+
+#undef definefunction
+#undef vhostinfoW
+#undef vhostinfoA
+}
+
 void Send_I18N_Keys()
 {
 	for (auto &[_en, data] : TR.get_hook())
 	{
-		HostInfoI18NReq resp(_en, data.raw());
-		WriteFile(hookPipe, &resp, sizeof(resp), DUMMY, nullptr);
+		rpc::call<rpc::Id::RequestI18N>(hookPipe, _en, std::string(data.raw()));
 	}
+}
+void registerHookRpcHandlers()
+{
+	rpc::on<rpc::Id::RespondI18N>([](LANG_STRINGS_HOOK enum_, std::string result)
+								  { TR.get_hook()[enum_].set(std::move(result)); });
+	auto insertnewhook = [](std::wstring hcode)
+	{
+		static int userHooks = 0;
+		if (auto hp = HookCode::Parse(hcode))
+			NewHook(hp.value(), ("UserHook" + std::to_string(userHooks += 1)).c_str());
+		else
+			Msg::Warning(TR[INVALIDHOOKCODE]);
+	};
+	rpc::on<rpc::Id::InsertHook>(insertnewhook);
+	rpc::on<rpc::Id::InsertPCHooks>([](int which)
+									{
+		if (which == 0)
+			PcHooks::hookGdiGdiplusD3dxFunctions();
+		else if (which == 1)
+			PcHooks::hookOtherPcFunctions(); });
+	rpc::on<rpc::Id::QueryI18N>(Send_I18N_Keys);
+	rpc::on<rpc::Id::RemoveHook>([](uint64_t address)
+								 { RemoveHook(address, 0); });
+	rpc::on<rpc::Id::FindHook>([](SearchParam sp)
+							   {
+		if (*sp.text)
+			SearchForText(sp.text, sp.codepage);
+		else
+			SearchForHooks(sp); });
+	rpc::on<rpc::Id::SetDetectedCodepage>([](DWORD codepage, uint64_t hpaddress)
+										  {
+		for (auto &hook : *hooks)
+			if (abs((long long)(hook.address - hpaddress)) <= 0)
+			{
+				if (!hook.hp.detectedCodepage)
+					hook.hp.detectedCodepage = codepage;
+				break;
+			} });
 }
 static void ParseCommand(HANDLE hostPipe, bool &running)
 {
@@ -43,56 +130,8 @@ static void ParseCommand(HANDLE hostPipe, bool &running)
 		running = false;
 		return;
 	}
-	switch (*(HostCommandType *)buffer)
-	{
-	case HOST_COMMAND_I18N_RESPONSE:
-	{
-		auto info = (I18NResponse *)buffer;
-		TR.get_hook()[info->enum_].set(info->result);
-	}
-	break;
-	case HOST_COMMAND_NEW_HOOK:
-	{
-		auto info = (InsertHookCmd *)buffer;
-		static int userHooks = 0;
-		NewHook(info->hp, ("UserHook" + std::to_string(userHooks += 1)).c_str());
-	}
-	break;
-	case HOST_COMMAND_INSERT_PC_HOOKS:
-	{
-		auto info = (InsertPCHooksCmd *)buffer;
-		if (info->which == 0)
-			PcHooks::hookGdiGdiplusD3dxFunctions();
-		else if (info->which == 1)
-			PcHooks::hookOtherPcFunctions();
-	}
-	break;
-	case HOST_COMMAND_I18N_QUERY:
-	{
-		Send_I18N_Keys();
-	}
-	break;
-	case HOST_COMMAND_REMOVE_HOOK:
-	{
-		auto info = (RemoveHookCmd *)buffer;
-		RemoveHook(info->address, 0);
-	}
-	break;
-	case HOST_COMMAND_FIND_HOOK:
-	{
-		auto info = (FindHookCmd *)buffer;
-		if (*info->sp.text)
-			SearchForText(info->sp.text, info->sp.codepage);
-		else
-			SearchForHooks(info->sp);
-	}
-	break;
-	case HOST_COMMAND_DETACH:
-	{
+	if (rpc::dispatch(buffer, count) == (uint32_t)rpc::Id::Detach)
 		running = false;
-	}
-	break;
-	}
 }
 void CommunicationInitialize(HANDLE hostPipe, HANDLE hookPipe, bool &running)
 {
@@ -123,16 +162,16 @@ void CommunicationInitialize(HANDLE hostPipe, HANDLE hookPipe, bool &running)
 	// i18n key & result
 	for (auto &[_en, data] : TR.get_hook())
 	{
-		HostInfoI18NReq req(_en, data.raw());
-		WriteFile(hookPipe, &req, sizeof(req), DUMMY, nullptr);
+		rpc::call<rpc::Id::RequestI18N>(hookPipe, _en, std::string(data.raw()));
 		ParseCommand(hostPipe, running);
 		if (!running)
 			return;
 	}
-	WriteFile(hookPipe, &HostInfoPreparedOK, sizeof(HostInfoPreparedOK), DUMMY, nullptr);
+	rpc::call<rpc::Id::NotifyPreparedOK>(hookPipe);
 }
 DWORD WINAPI Pipe(LPVOID)
 {
+	registerHookRpcHandlers();
 	for (bool running = true; running; hookPipe = INVALID_HANDLE_VALUE)
 	{
 		AutoHandle<> hostPipe = INVALID_HANDLE_VALUE;
@@ -166,7 +205,7 @@ DWORD WINAPI Pipe(LPVOID)
 		MH_Uninitialize();
 		for (auto &hook : *hooks)
 			hook.Clear();
-		FreeLibraryAndExitThread(GetModuleHandleW(LUNA_HOOK_DLL), 0);
+		FreeLibraryAndExitThread((HMODULE)&__ImageBase, 0);
 	}
 }
 
@@ -174,107 +213,20 @@ void TextOutput(const ThreadParam &tp, const HookParam &hp, TextOutput_T *buffer
 {
 	if (!len)
 		return;
-	memcpy(&buffer->tp, &tp, sizeof(tp));
-	memcpy(&buffer->hp, &hp, sizeof(hp));
-	WriteFile(hookPipe, buffer, sizeof(TextOutput_T) + len, DUMMY, nullptr);
+	buffer->tp = tp;
+	buffer->hp = hp;
+	rpc::call<rpc::Id::OutputText>(hookPipe, rpc::RpcBlob{(BYTE *)buffer, (uint32_t)(sizeof(TextOutput_T) + len)});
 }
 
-namespace Msg
-{
-#define vhostinfoA(_type, cp)                                         \
-	{                                                                 \
-		va_list args;                                                 \
-		va_start(args, text);                                         \
-		HostInfoNotif buffer;                                         \
-		buffer.type = _type;                                          \
-		buffer.codepage = cp;                                         \
-		vsnprintf(buffer.message, MESSAGE_SIZE, text, args);          \
-		va_end(args);                                                 \
-		WriteFile(hookPipe, &buffer, sizeof(buffer), DUMMY, nullptr); \
-	}
-
-#define vhostinfoW(_type)                                                   \
-	{                                                                       \
-		va_list args;                                                       \
-		va_start(args, text);                                               \
-		HostInfoNotifW buffer;                                              \
-		buffer.type = _type;                                                \
-		_vsnwprintf_s(buffer.message, MESSAGE_SIZE, _TRUNCATE, text, args); \
-		va_end(args);                                                       \
-		WriteFile(hookPipe, &buffer, sizeof(buffer), DUMMY, nullptr);       \
-	}
-
-#define definefunction(funcname, type)             \
-	template <>                                    \
-	void funcname<char>(LPCSTR text, ...)          \
-		vhostinfoA(type, CP_UTF8);                 \
-	template <>                                    \
-	void funcname<wchar_t>(LPCWSTR text, ...)      \
-		vhostinfoW(type);                          \
-	void funcname(UINT codepage, LPCSTR text, ...) \
-		vhostinfoA(type, codepage);
-
-	definefunction(Log, HOSTINFO::Console);
-	definefunction(Warning, HOSTINFO::Warning);
-	definefunction(EmuConnected, HOSTINFO::EmuConnected);
-	definefunction(EmuWarning, HOSTINFO::EmuWarning);
-	void EmuGameInfo(const char *id, const char *title, const char *version)
-	{
-		EmuGameInfoNotif buffer(id, title, version);
-		WriteFile(hookPipe, &buffer, sizeof(buffer), DUMMY, nullptr);
-	}
-
-#undef definefunction
-#undef vhostinfoW
-#undef vhostinfoA
-}
-Synchronized<std::unordered_map<uintptr_t, std::wstring>> modulecache;
-std::wstring &querymodule(uintptr_t addr)
-{
-	auto &re = modulecache.Acquire().contents;
-	auto found = re.find(addr);
-	if (found != re.end())
-		return found->second;
-	WCHAR fn[MAX_PATH];
-	if (GetModuleFileNameW((HMODULE)addr, fn, MAX_PATH))
-	{
-		re[addr] = wcsrchr(fn, L'\\') + 1;
-	}
-	else
-	{
-		re[addr] = L"";
-	}
-	return re[addr];
-}
-void NotifyHookFound(HookParam hp, wchar_t *text)
-{
-	if (hp.jittype == JITTYPE::PC)
-		if (!(hp.type & MODULE_OFFSET))
-			if (MEMORY_BASIC_INFORMATION info = {}; VirtualQuery((LPCVOID)hp.address, &info, sizeof(info)))
-			{
-				auto mm = querymodule((uintptr_t)info.AllocationBase);
-				if (mm.size())
-				{
-					hp.type |= MODULE_OFFSET;
-					hp.address -= (uint64_t)info.AllocationBase;
-					wcsncpy_s(hp.module, mm.c_str(), MAX_MODULE_SIZE - 1);
-				}
-			}
-	HookFoundNotif buffer(hp, text);
-	WriteFile(hookPipe, &buffer, sizeof(buffer), DUMMY, nullptr);
-}
 void NotifyHookRemove(uint64_t addr, LPCSTR name)
 {
 	if (name)
 		Msg::Log(TR[REMOVING_HOOK], name);
-	HookRemovedNotif buffer(addr);
-	WriteFile(hookPipe, &buffer, sizeof(buffer), DUMMY, nullptr);
+	rpc::call<rpc::Id::NotifyHookRemoved>(hookPipe, addr);
 }
 void NotifyHookInserting(uint64_t addr, wchar_t hookcode[])
 {
-	HookInsertingNotif buffer(addr);
-	wcscpy_s(buffer.hookcode, ARRAYSIZE(buffer.hookcode), hookcode);
-	WriteFile(hookPipe, &buffer, sizeof(buffer), DUMMY, nullptr);
+	rpc::call<rpc::Id::NotifyHookInserting>(hookPipe, addr, std::wstring(hookcode));
 }
 BOOL WINAPI DllMain(HINSTANCE hModule, DWORD fdwReason, LPVOID)
 {
@@ -324,7 +276,7 @@ int HookStrLen(HookParam *hp, BYTE *data)
 	if (hp->type & CODEC_UTF16)
 		return wcsnlen((wchar_t *)data, TEXT_BUFFER_SIZE) * 2;
 	else if (hp->type & CODEC_UTF32)
-		return strlenEx((char32_t *)data) * 4;
+		return strnlenEx((char32_t *)data, TEXT_BUFFER_SIZE) * 4;
 	else
 		return strnlen((char *)data, TEXT_BUFFER_SIZE);
 }
@@ -421,7 +373,7 @@ bool NewHook_2(HookParam hp, LPCSTR name, bool silentlyfail = false)
 		{
 			argcount = -1;
 		}
-		hp.address = tryfindmonoil2cpp(spls[0].c_str(), spls[1].c_str(), spls[2].c_str(), spls[3].c_str(), argcount);
+		hp.address = (decltype(hp.address))(g_monoil2cpp ? g_monoil2cpp->get_method_pointer(spls[0].c_str(), spls[1].c_str(), spls[2].c_str(), spls[3].c_str(), argcount, false) : 0);
 
 		if (!hp.address)
 		{
@@ -491,7 +443,7 @@ bool NewHook_2(HookParam hp, LPCSTR name, bool silentlyfail = false)
 
 bool NewHook(HookParam hp, LPCSTR name)
 {
-	auto retry = (!(hp.type & BREAK_POINT)) && commonsharedmem->tryvehhook;
+	auto retry = (!(hp.type & BREAK_POINT)) && (!(hp.type & INLINE_HOOK)) && commonsharedmem->tryvehhook;
 	if (NewHook_2(hp, name, retry))
 		return true;
 	if (!retry)
@@ -504,6 +456,10 @@ void RemoveHook(uint64_t addr, int maxOffset)
 	for (auto &hook : *hooks)
 		if (abs((long long)(hook.address - addr)) <= maxOffset)
 			return hook.Clear();
+}
+std::wstring LoadResCharSet(LPCWSTR pszResID)
+{
+	return strReplace(strReplace(StringToWideString(LoadResData(pszResID, L"CHARSET")), L"\r"), L"\n");
 }
 std::string LoadResData(LPCWSTR pszResID, LPCWSTR _type)
 {
@@ -551,7 +507,7 @@ bool is_memory_readable_ex(void *ptr, size_t size)
 		   mbi.RegionSize >= size;
 }
 
-static bool _queryversion(WORD *_1, WORD *_2, WORD *_3, WORD *_4)
+std::optional<version_t> queryversion()
 {
 	wchar_t fileName[MAX_PATH];
 	GetModuleFileNameW(NULL, fileName, MAX_PATH);
@@ -559,39 +515,7 @@ static bool _queryversion(WORD *_1, WORD *_2, WORD *_3, WORD *_4)
 	DWORD dwSize = GetFileVersionInfoSizeW(fileName, &dwHandle);
 	if (dwSize == 0)
 	{
-		return false;
-	}
-
-	std::vector<char> versionInfoBuffer(dwSize);
-	if (!GetFileVersionInfoW(fileName, dwHandle, dwSize, versionInfoBuffer.data()))
-	{
-		return false;
-	}
-
-	VS_FIXEDFILEINFO *pFileInfo;
-	UINT fileInfoSize;
-	if (!VerQueryValueW(versionInfoBuffer.data(), L"\\", reinterpret_cast<LPVOID *>(&pFileInfo), &fileInfoSize))
-	{
-		return false;
-	}
-
-	DWORD ms = pFileInfo->dwFileVersionMS;
-	DWORD ls = pFileInfo->dwFileVersionLS;
-
-	WORD majorVersion = HIWORD(ms);
-	WORD minorVersion = LOWORD(ms);
-	WORD buildNumber = HIWORD(ls);
-	WORD revisionNumber = LOWORD(ls);
-	*_1 = majorVersion;
-	*_2 = minorVersion;
-	*_3 = buildNumber;
-	*_4 = revisionNumber;
-	return true;
-}
-std::optional<version_t> queryversion()
-{
-	WORD _1, _2, _3, _4;
-	if (!_queryversion(&_1, &_2, &_3, &_4))
 		return {};
-	return std::make_tuple(_1, _2, _3, _4);
+	}
+	return QueryVersion(fileName);
 }

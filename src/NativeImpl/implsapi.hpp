@@ -1,5 +1,6 @@
 #include <sapi.h>
 #include <sphelper.h>
+#include "wav.hpp"
 namespace
 {
     const wchar_t SPCAT_VOICES_7[] = LR"(HKEY_LOCAL_MACHINE\SOFTWARE\Microsoft\Speech\Voices)";
@@ -58,30 +59,14 @@ namespace
             pIstream->Stat(&stats, STATFLAG_NONAME);
 
             ULONG sSize = stats.cbSize.QuadPart; // size of the data to be read
-
-            ULONG bytesRead; //	this will tell the number of bytes that have been read
+            // 构造 WAV 头，再把 SAPI 数据读入其后
+            auto header = wav::BuildHeader(originalFmt.WaveFormatExPtr(), (uint32_t)sSize);
             std::vector<byte> datas;
-            datas.resize(sSize + 46);
-            auto pBuffer = datas.data(); // buffer to read the data
-            // memcpy(pBuffer,&wavHeader,sizeof(WAV_HEADER));
-            int fsize = sSize + 46;
-            int ptr = 0;
-            memcpy(pBuffer, "RIFF", 4);
-            ptr += 4;
-            memcpy(pBuffer + ptr, &fsize, 4);
-            ptr += 4;
-            memcpy(pBuffer + ptr, "WAVEfmt ", 8);
-            ptr += 8;
-            memcpy(pBuffer + ptr, "\x12\x00\x00\x00", 4);
-            ptr += 4;
-            memcpy(pBuffer + ptr, originalFmt.WaveFormatExPtr(), sizeof(WAVEFORMATEX));
-            ptr += sizeof(WAVEFORMATEX);
-            memcpy(pBuffer + ptr, "data", 4);
-            ptr += 4;
-            memcpy(pBuffer + ptr, &sSize, 4);
-            ptr += 4;
+            datas.resize(header.size() + sSize);
+            memcpy(datas.data(), header.data(), header.size());
+            ULONG bytesRead; //	this will tell the number of bytes that have been read
             // read the data into the buffer
-            pIstream->Read(pBuffer + ptr, sSize, &bytesRead);
+            pIstream->Read(datas.data() + header.size(), sSize, &bytesRead);
 
             ret = std::move(datas);
         }();
@@ -101,7 +86,7 @@ namespace
             CHECK_FAILURE_NORET(CoCreateInstance(CLSID_SpVoice, NULL, CLSCTX_ALL, IID_ISpVoice, (void **)&pSpVoice));
             CHECK_FAILURE_NORET(SpEnumTokens(token, NULL, NULL, &pSpEnumTokens));
             ULONG ulTokensNumber = 0;
-            pSpEnumTokens->GetCount(&ulTokensNumber);
+            CHECK_FAILURE_NORET(pSpEnumTokens->GetCount(&ulTokensNumber));
             CComPtr<ISpObjectToken> m_pISpObjectToken;
             for (ULONG i = 0; i < ulTokensNumber; i++)
             {
@@ -110,7 +95,7 @@ namespace
                 CComHeapPtr<WCHAR> pszVoiceName;
                 CHECK_FAILURE_CONTINUE(m_pISpObjectToken->GetId(&pszVoiceId));
                 CHECK_FAILURE_CONTINUE(m_pISpObjectToken->GetStringValue(NULL, &pszVoiceName));
-                ret.emplace_back(std::move(pszVoiceId), std::move(pszVoiceName));
+                ret.emplace_back(pszVoiceId, pszVoiceName);
             }
         }();
         return ret;
@@ -122,19 +107,11 @@ namespace SAPI
     {
         return ::Speak(Content, voiceid, rate, pitch, volume);
     }
-    std::vector<std::pair<std::wstring, std::wstring>> List(int version)
+    std::vector<std::pair<std::wstring, std::wstring>> List()
     {
-        if (version == 7)
-        {
-            return ::List(SPCAT_VOICES_7);
-        }
-        else if (version == 10)
-        {
-            return ::List(SPCAT_VOICES_10);
-        }
-        else
-        {
-            return {};
-        }
+        auto __7 = ::List(SPCAT_VOICES_7);
+        auto __10 = ::List(SPCAT_VOICES_10);
+        __10.insert(__10.end(), std::make_move_iterator(__7.begin()), std::make_move_iterator(__7.end()));
+        return __10;
     }
 }

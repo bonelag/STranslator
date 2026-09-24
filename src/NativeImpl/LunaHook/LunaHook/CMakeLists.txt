@@ -1,3 +1,11 @@
+include(FetchContent)
+FetchContent_Declare(minhook
+GIT_REPOSITORY https://github.com/TsudaKageyu/minhook
+	GIT_TAG master
+	GIT_SHALLOW TRUE
+)
+FetchContent_MakeAvailable(minhook)
+
 include_directories(. util engines)
 if(${CMAKE_SIZEOF_VOID_P} EQUAL 8) 
 	aux_source_directory("engine64" enginessrc)
@@ -16,6 +24,7 @@ target_precompile_headers(pchhook PUBLIC pchhook.h)
 
 set(texthook_src
 		main.cc
+		hookcode.cpp
 		texthook.cc
 		hookfinder.cc
 		${enginessrc}
@@ -31,7 +40,7 @@ add_subdirectory(emulators)
 
 
 
-add_library(LunaHook MODULE ${texthook_src} resource.rc ${versioninfo})
+add_library(LunaHook MODULE ${texthook_src} resource/resource.rc ${versioninfo})
 add_library(trhelper ../include/InfoStrings.cpp)
 target_compile_definitions(trhelper PRIVATE -DBUILD_HOOK=1)
 
@@ -46,3 +55,5 @@ target_link_options(LunaHook PRIVATE "/DELAYLOAD:httpapi.dll")
 target_link_options(LunaHook PRIVATE "/DELAYLOAD:WS2_32.dll")
 target_link_options(LunaHook PRIVATE "/DELAYLOAD:VERSION.dll")
 target_link_libraries(LunaHook PRIVATE delayimp)
+
+add_dependencies(LunaHook LunaTmpFontLoader)

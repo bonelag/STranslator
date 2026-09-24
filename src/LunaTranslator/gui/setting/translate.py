@@ -1,5 +1,5 @@
 from qtsymbols import *
-import functools, os, re, shutil, zipfile, threading
+import functools, os, re, shutil, zipfile
 import gobject, math, NativeUtils, hashlib, uuid
 from myutils.config import (
     globalconfig,
@@ -16,16 +16,15 @@ from datetime import datetime
 import requests
 from myutils.utils import (
     useExCheck,
-    stringfyerror,
-    makehtml,
     selectdebugfile,
     splittranslatortypes,
+    get_free_port,
     translate_exits,
     getannotatedapiname,
     format_bytes,
 )
 from myutils.proxy import getproxy
-from myutils.hwnd import subprochiderun
+from myutils.utils import subprochiderun
 import json, sqlite3, NativeUtils
 from traceback import print_exc
 from collections import Counter
@@ -39,12 +38,10 @@ from gui.usefulwidget import (
     getboxlayout,
     VisLFormLayout,
     getIconButton,
-    D_getcolorbutton,
-    getcolorbutton,
+    ColorButton,
     check_grid_append,
     CollapsibleBoxWithButton,
     getsimpleswitch,
-    LinkLabel,
     D_getIconButton,
     MyInputDialog,
     D_getsimpleswitch,
@@ -55,7 +52,7 @@ from gui.usefulwidget import (
     automakegrid,
     FocusFontCombo,
     getsmalllabel,
-    NQGroupBox,
+    clearlayout,
     makescrollgrid,
     IconButton,
     PopupWidget,
@@ -72,7 +69,6 @@ from gui.dynalang import (
     LStandardItem,
     LTableView,
 )
-from gui.setting.about import offlinelinks
 
 
 def getallllms(l):
@@ -127,7 +123,7 @@ class SpecialFont(PopupWidget):
         if "privatefont" not in globalconfig["fanyi"][apiuid]:
             globalconfig["fanyi"][apiuid]["privatefont"] = {}
         dd = globalconfig["fanyi"][apiuid]["privatefont"]
-        for i in range(4):
+        for i in range(5):
             if i == 0:
                 t = "字体"
                 k = "fontfamily"
@@ -138,7 +134,16 @@ class SpecialFont(PopupWidget):
                     self.resetfont()
 
                 w = FocusFontCombo()
-                w.setCurrentFont(QFont(dd.get(k, globalconfig["fonttype2"])))
+                w.setCurrentFont(
+                    QFont(
+                        dd.get(
+                            k,
+                            globalconfig.get(
+                                "fonttype2", gobject.tempconfig.get("fonttype2", "")
+                            ),
+                        )
+                    )
+                )
                 w.currentTextChanged.connect(functools.partial(_f, dd, k))
             elif i == 1:
                 t = "大小"
@@ -159,6 +164,12 @@ class SpecialFont(PopupWidget):
                     dd, k, default=globalconfig.get(k, False), callback=self.resetfont
                 )
             elif i == 3:
+                t = "倾斜"
+                k = "showitalic"
+                w = getsimpleswitch(
+                    dd, k, default=globalconfig.get(k, False), callback=self.resetfont
+                )
+            elif i == 4:
                 t = "间距"
                 k = "lineheight"
                 w = QWidget()
@@ -194,7 +205,7 @@ def renameapi(qlabel: QLabel, apiuid, self, countnum, _=None):
     usecache.setCheckable(True)
     useproxy = LAction("使用代理", menu)
     useproxy.setCheckable(True)
-    astoppest.setChecked(globalconfig["toppest_translator"] == apiuid)
+    astoppest.setChecked(globalconfig.get("toppest_translator") == apiuid)
     menu.addAction(editname)
     menu.addAction(specialfont)
     menu.addAction(astoppest)
@@ -252,6 +263,230 @@ def renameapi(qlabel: QLabel, apiuid, self, countnum, _=None):
         selectllmcallback(self, countnum, apiuid)
 
 
+class RippleWidget(QWidget):
+    """简洁明亮的电磁波圆环聚集动画组件"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        # 动画参数
+        self.ripple_count = 3  # 同时显示的波纹数量
+        self.max_radius = 80  # 最大半径
+        self.min_radius = 3  # 最小半径
+
+        # 颜色配置 - 更亮的蓝色
+        self.ring_color = QColor(0, 150, 255)  # 圆环主色
+
+        # 初始化波纹
+        self.ripples = []
+        for i in range(self.ripple_count):
+            self.ripples.append(
+                {
+                    "radius": self.max_radius
+                    - i * (self.max_radius / self.ripple_count),
+                    "opacity": 0.0,
+                }
+            )
+
+        # 动画定时器
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self.update_animation)
+        self.timer.start(30)
+
+        # 固定大小
+        self.setFixedSize(self.max_radius * 2 + 20, self.max_radius * 2 + 20)
+
+    def set_center(self, center_pos):
+        """设置中心位置"""
+        if center_pos:
+            self.move(
+                int(center_pos.x() - self.width() // 2),
+                int(center_pos.y() - self.height() // 2),
+            )
+
+    def update_animation(self):
+        """更新动画状态"""
+        for ripple in self.ripples:
+            # 缩小半径
+            ripple["radius"] -= 2.0
+
+            # 当波纹到达最小半径时重置
+            if ripple["radius"] < self.min_radius:
+                ripple["radius"] = self.max_radius
+                ripple["opacity"] = 0.0
+
+            # 平滑淡入淡出
+            if ripple["radius"] > self.max_radius * 0.7:
+                target_opacity = 1.0 - (ripple["radius"] - self.max_radius * 0.7) / (
+                    self.max_radius * 0.3
+                )
+                ripple["opacity"] += (target_opacity - ripple["opacity"]) * 0.3
+            elif ripple["radius"] < self.max_radius * 0.3:
+                target_opacity = ripple["radius"] / (self.max_radius * 0.3)
+                ripple["opacity"] += (target_opacity - ripple["opacity"]) * 0.3
+            else:
+                ripple["opacity"] += (1.0 - ripple["opacity"]) * 0.3
+
+        self.update()
+
+    def paintEvent(self, event):
+        """绘制明亮的电磁波圆环"""
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+
+        center = QPoint(self.width() // 2, self.height() // 2)
+
+        for ripple in self.ripples:
+            if ripple["opacity"] <= 0.01:
+                continue
+
+            radius = ripple["radius"]
+            opacity = ripple["opacity"]
+
+            base_color = QColor(self.ring_color)
+
+            # 1. 外层光晕（让圆环看起来发光）
+            outer_glow = QRadialGradient(center, radius + 6)
+            outer_glow.setColorAt(
+                0.0,
+                QColor(
+                    base_color.red(),
+                    base_color.green(),
+                    base_color.blue(),
+                    int(100 * opacity),
+                ),
+            )
+            outer_glow.setColorAt(
+                1.0, QColor(base_color.red(), base_color.green(), base_color.blue(), 0)
+            )
+
+            pen = QPen(QBrush(outer_glow), 12)
+            painter.setPen(pen)
+            painter.setBrush(Qt.NoBrush)
+            painter.drawEllipse(center, int(radius), int(radius))
+
+            # 2. 主圆环（明亮的线条）
+            main_gradient = QRadialGradient(center, radius)
+            main_gradient.setColorAt(
+                0.0, QColor(base_color.red(), base_color.green(), base_color.blue(), 0)
+            )
+            main_gradient.setColorAt(
+                0.75,
+                QColor(
+                    base_color.red(),
+                    base_color.green(),
+                    base_color.blue(),
+                    int(230 * opacity),
+                ),
+            )
+            main_gradient.setColorAt(0.85, QColor(255, 255, 255, int(255 * opacity)))
+            main_gradient.setColorAt(
+                0.88,
+                QColor(
+                    base_color.red(),
+                    base_color.green(),
+                    base_color.blue(),
+                    int(240 * opacity),
+                ),
+            )
+            main_gradient.setColorAt(
+                1.0, QColor(base_color.red(), base_color.green(), base_color.blue(), 0)
+            )
+
+            pen = QPen(QBrush(main_gradient), 3.5)
+            painter.setPen(pen)
+            painter.drawEllipse(center, int(radius), int(radius))
+
+            # 3. 内层高光线（让圆环更有层次）
+            inner_highlight = QRadialGradient(center, radius)
+            inner_highlight.setColorAt(0.0, QColor(255, 255, 255, 0))
+            inner_highlight.setColorAt(0.85, QColor(255, 255, 255, int(180 * opacity)))
+            inner_highlight.setColorAt(1.0, QColor(255, 255, 255, 0))
+
+            pen = QPen(QBrush(inner_highlight), 1)
+            painter.setPen(pen)
+            painter.drawEllipse(center, int(radius), int(radius))
+
+        painter.end()
+
+    def reset_animation(self):
+        """重置动画状态"""
+        for i, ripple in enumerate(self.ripples):
+            ripple["radius"] = self.max_radius - i * (
+                self.max_radius / self.ripple_count
+            )
+            ripple["opacity"] = 0.0
+
+
+class GuideOverlay(QWidget):
+    """引导遮罩层"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+        self.ripple = RippleWidget(self)
+        self.target_pos = None
+        self._updating_geometry = False
+
+    def show_at(self, target_widget):
+        """在指定控件位置显示引导"""
+        if self.parent() and target_widget:
+            target_pos = target_widget.mapTo(
+                self.parent(), target_widget.rect().center()
+            )
+            self.target_pos = target_pos
+
+            parent_rect = self.parent().rect()
+            self.setGeometry(parent_rect)
+
+            self.ripple.reset_animation()
+            self.ripple.set_center(target_pos)
+
+            self.show()
+            self.raise_()
+
+    def update_position(self):
+        """更新位置"""
+        if self.target_pos and not self._updating_geometry:
+            self._updating_geometry = True
+            parent_rect = self.parent().rect()
+            self.setGeometry(parent_rect)
+            self.ripple.set_center(self.target_pos)
+            self._updating_geometry = False
+
+
+tscolor_setting_collector: "list[IconButtonWithOverlay]" = []
+
+
+def show_tscolor_setting_guide():
+    for _ in tscolor_setting_collector:
+        _.guide.show_at(_)
+
+
+class IconButtonWithOverlay(ColorButton):
+    def __init__(self, *argc, **kw):
+        super().__init__(*argc, **kw)
+        self.guide = GuideOverlay(self)
+        self.guide.hide()
+        self.clicked.connect(
+            lambda: [_.guide.hide() for _ in tscolor_setting_collector]
+        )
+        tscolor_setting_collector.append(self)
+
+    def resizeEvent(self, a0):
+        super().resizeEvent(a0)
+        if hasattr(self, "guide") and self.guide.isVisible():
+            self.guide.update_position()
+
+
+def D_IconButtonWithOverlay(*argc, **kw):
+    return lambda: IconButtonWithOverlay(*argc, **kw)
+
+
 def getrenameablellabel(uid, self, countnum):
     name = ClickableLabel(dynamicapiname(uid))
     fn = functools.partial(renameapi, name, uid, self, countnum)
@@ -304,7 +539,7 @@ def selectllmcallback(self, countnum: list, fanyi, newname=None):
         "use",
         callback=functools.partial(gobject.base.prepare, uid),
     )
-    color = getcolorbutton(
+    color = IconButtonWithOverlay(
         self,
         globalconfig["fanyi"][uid],
         "color",
@@ -335,29 +570,12 @@ def selectllmcallback_2(self, countnum: list, fanyi, _=None):
         gobject.base.translators.pop(fanyi)
     except:
         pass
-    layout: QGridLayout = getattr(self, "damoxinggridinternal")
-    if not layout:
-        return
-    if fanyi not in countnum:
-        print(fanyi)
-        return
-    idx = countnum.index(fanyi)
-    line = idx // 3
-    off = line * 14 + (idx % 3) * 5
-    do = 0
-    i = 0
-    while do < 4:
-
-        w = layout.itemAt(off + i).widget()
-        i += 1
-        if isinstance(w, NQGroupBox):
-            continue
-        elif isinstance(w, QLabel) and w.text() == "":
-            continue
-        elif not w.isEnabled():
-            continue
-        w.setEnabled(False)
-        do += 1
+    layout: QGridLayout = getattr(self, "damoxinggridinternal", None)
+    if layout is not None:
+        clearlayout(layout)
+        automakegrid(
+            layout, initsome11(self, getallllms(globalconfig["fanyi"]), save=True)
+        )
 
     if not loadvisinternal(True)[0]:
         self.__del_btn.hide()
@@ -400,9 +618,17 @@ def initsome11(self, l, save=False):
     grids: "list[list]" = []
     i = 0
     line = []
-    countnum = []
     if save:
-        self.__countnum = countnum
+        # 复用已存在的 countnum 列表对象（+/- 按钮、标签右键菜单都捕获了它），
+        # 原地清空再重建，避免重建后这些回调持有的列表与实际网格脱节。
+        countnum = getattr(self, "__countnum", None)
+        if countnum is None:
+            countnum = []
+            self.__countnum = countnum
+        else:
+            countnum.clear()
+    else:
+        countnum = []
     for fanyi in l:
         which = translate_exits(fanyi)
         if not which:
@@ -427,7 +653,7 @@ def initsome11(self, l, save=False):
                 "use",
                 callback=functools.partial(gobject.base.prepare, fanyi),
             ),
-            D_getcolorbutton(
+            D_IconButtonWithOverlay(
                 self,
                 globalconfig["fanyi"][fanyi],
                 "color",
@@ -452,7 +678,6 @@ def initsome11(self, l, save=False):
 
 def initsome21(self, not_is_gpt_like):
     not_is_gpt_like = initsome11(self, not_is_gpt_like)
-    # not_is_gpt_like += [[(functools.partial(offlinelinks, "translate"), 0)]]
     grids = [
         [
             functools.partial(
@@ -624,6 +849,49 @@ def _c_slice_spin(
     return l
 
 
+def loadmodewidget():
+    w = QWidget()
+    text = QLabel("(default: mmap)")
+    stack = QStackedWidget()
+    stack.setContentsMargins(0, 0, 0, 0)
+    stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+    stack.addWidget(w)
+    stack.addWidget(text)
+
+    def __(_=None):
+        _df = globalconfig["llama.cpp"].get("load-mode-use", False)
+        stack.setCurrentIndex(1 - _df)
+
+    switch = getsimpleswitch(
+        globalconfig["llama.cpp"], "load-mode-use", callback=__, default=False
+    )
+    __()
+    l2 = QHBoxLayout(w)
+
+    l2.setContentsMargins(0, 0, 0, 0)
+    l2.addWidget(
+        getsimplecombobox(
+            ["none", "mmap", "mlock", "mmap+mlock", "dio"],
+            globalconfig["llama.cpp"],
+            k="load-mode",
+            internal=[
+                "none",
+                "mmap",
+                "mlock",
+                "mmap+mlock",
+                "dio",
+            ],
+            default="mmap",
+        ),
+    )
+
+    l = QHBoxLayout()
+    l.setContentsMargins(0, 0, 0, 0)
+    l.addWidget(switch)
+    l.addWidget(stack)
+    return l
+
+
 def nglnum():
     l = QHBoxLayout()
     combo = getsimplecombobox(
@@ -651,29 +919,20 @@ def nglnum():
     return l
 
 
-def mmapmlock():
-    ll = getsmalllabel(
-        "--mlock",
-        "--mlock    force system to keep model in RAM rather than swapping or compressing",
-    )()
-    swith2 = getsimpleswitch(globalconfig["llama.cpp"], key="mlock", default=False)
-
-    def ___(x):
-        ll.setHidden(x)
-        swith2.setHidden(x)
-
-    swith = getsimpleswitch(
-        globalconfig["llama.cpp"], key="mmap", default=True, callback=___
-    )
+def portnum():
     l = QHBoxLayout()
     l.setContentsMargins(0, 0, 0, 0)
-    l.addWidget(swith)
-    l.addWidget(QLabel())
-    l.addWidget(ll)
-    l.addWidget(swith2)
-    if swith.isChecked():
-        swith2.hide()
-        ll.hide()
+    spin = getspinbox(0, 65536, globalconfig["llama.cpp"], "port", default=8080)
+    switch = getsimpleswitch(
+        globalconfig["llama.cpp"],
+        "port-fixed",
+        default=False,
+        callback=lambda _: spin.setVisible(_),
+    )
+    if not globalconfig["llama.cpp"].get("port-fixed", False):
+        spin.setVisible(False)
+    l.addWidget(switch)
+    l.addWidget(spin)
     return l
 
 
@@ -696,17 +955,21 @@ def __getfirstgguf(ggufdir: str):
                     return os.path.abspath(os.path.join(_dir, _f))
 
 
-def __getllamacppversion(llamaserver):
+def __getllamacppversion(llamaserver, std=False):
     if not llamaserver:
         return None
     cmd = '"{}" --version'.format(llamaserver)
     llamaserverdir = os.path.dirname(llamaserver)
     proc = subprochiderun(cmd, cwd=llamaserverdir)
-    version: "re.Match" = re.search(r"version: (\d+)", proc.stderr)
+    version: "re.Match" = re.search(
+        r"version: .*? \(build (\d+), commit .*?\)", proc.stderr
+    )
     if not version:
-        return None
+        version: "re.Match" = re.search(r"version: (\d+) \(.*?\)", proc.stderr)
+    if not version:
+        return (None, proc.stderr) if std else None
     version = int(version.groups()[0])
-    return version
+    return (version, proc.stderr) if std else version
 
 
 def __getllamacppdevices(llamaserver):
@@ -720,6 +983,8 @@ def __getllamacppdevices(llamaserver):
     for __ in _[1].splitlines():
         __ = __.strip()
         if not __:
+            continue
+        if __ == "(none)":
             continue
         result.append(__)
     return result
@@ -819,6 +1084,8 @@ def copy_move_not_exists(src: str, dst: str, lost_copy: bool = False):
         for file in files:
             src_file = os.path.normpath(os.path.join(root, file))
             dst_file = os.path.normpath(os.path.join(target_dir, file))
+            if dst_file == src_file:
+                continue
             if (
                 src_file != dst_file
                 and os.path.exists(dst_file)
@@ -866,77 +1133,6 @@ def merge_copy_llamacpps(llamaserver, tag):
         gobject.base.safeinvokefunction.emit(LLAMA_CPP_REFRESH_BTN.click)
 
 
-@threader
-def autoupdatellamacpp(llamaserver, currversion):
-    check_interrupt = lambda: not globalconfig["llama.cpp"].get("autoupdate", False)
-    if check_interrupt():
-        return
-
-    if not llamaserver:
-        llamaserver = getllamaserverpath()
-    if not llamaserver:
-        return
-    if not currversion:
-        currversion = __getllamacppversion(llamaserver)
-    if not currversion:
-        return
-
-    res = requests.get(
-        "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest",
-        proxies=getproxy(),
-    ).json()
-    lastest = int(res["tag_name"][1:])
-    if lastest <= currversion:
-        return
-    insarchs = detect_llama_installed_archs(llamaserver)
-
-    if len(insarchs) > 1:
-        if "cpu" in insarchs:
-            insarchs.pop("cpu")
-    archs_down = []
-
-    threads: "list[threading.Thread]" = []
-    results = []
-
-    def ___down(arch, _, check_interrupt, tag):
-        results.append(
-            downloadone(
-                "llama.cpp " + arch,
-                _["browser_download_url"],
-                _["digest"],
-                check_interrupt,
-                tag,
-            )
-        )
-
-    for _ in res["assets"]:
-        name: str = _["name"]
-        maich = re.match(r"llama-.*?-bin-win-(.*?)-x64\.zip", name)
-        if not maich:
-            continue
-        arch_ = arch = maich.groups()[0]
-        if arch.startswith("cuda-"):
-            arch = arch.split(".")[0]
-
-        if arch not in insarchs:
-            continue
-        archs_down.append(arch_)
-        threads.append(
-            threading.Thread(
-                target=___down,
-                args=(arch, _, check_interrupt, res["tag_name"]),
-            )
-        )
-    for _ in threads:
-        _.start()
-    for _ in threads:
-        _.join()
-    if sum(results) != len(results):
-        raise Exception()
-
-    merge_copy_llamacpps(llamaserver, res["tag_name"])
-
-
 def getllamaserverpath(search=True):
     llamacppdir = globalconfig["llama.cpp"].get("llama-server.exe.dir", ".")
     llamaserver = globalconfig["llama.cpp"].get("llama-server.exe", "")
@@ -979,27 +1175,42 @@ def getllamaservercmd(llamaserver, gguf, version):
     if ngl == "number":
         ngl = globalconfig["llama.cpp"].get("gpu-layers", 200)
 
-    mmap = "--mmap"
-    if not globalconfig["llama.cpp"].get("mmap", True):
-        mmap = "--no-mmap"
-        if globalconfig["llama.cpp"].get("mlock", False):
-            mmap += " --mlock"
+    load_mode = ""
+    if globalconfig["llama.cpp"].get("load-mode-use", False):
+        _load_mode = globalconfig["llama.cpp"].get("load-mode", "mmap")
+        if version >= 10105:
+            load_mode = "--load-mode {}".format(_load_mode)
+        else:
+            if _load_mode == "none":
+                load_mode = "--no-mmap"
+            elif _load_mode == "mmap":
+                load_mode = "--mmap"
+            elif _load_mode == "mlock":
+                load_mode = "--mlock"
+            elif _load_mode == "mmap+mlock":
+                load_mode = "--mmap --mlock"
     if device == "auto":
         device = ""
     elif device == "cpu":
         device = "--device none"
     else:
         device = "--device {}".format(device.split(":")[0])
-    cmd = '"{llamaserver}" -m "{gguf}" --host {host} --port {port} {ctx} {parallel} --gpu-layers {ngl} {mmap} --metrics {device}'.format(
-        mmap=mmap,
+    host = globalconfig["llama.cpp"].get("host", "127.0.0.1")
+    port = (
+        get_free_port(host)
+        if not globalconfig["llama.cpp"].get("port-fixed", False)
+        else globalconfig["llama.cpp"].get("port", 8080)
+    )
+    cmd = '"{llamaserver}" -m "{gguf}" --host {host} --port {port} {ctx} {parallel} --gpu-layers {ngl} {load_mode} --metrics {device}'.format(
+        load_mode=load_mode,
         ngl=ngl,
         fa=fa,
         ctx=ctx,
         parallel=parallel,
         llamaserver=llamaserver,
         gguf=gguf,
-        host=globalconfig["llama.cpp"].get("host", "127.0.0.1"),
-        port=globalconfig["llama.cpp"].get("port", 8080),
+        host=host,
+        port=port,
         device=device,
     )
     return cmd
@@ -1022,8 +1233,6 @@ def getggufpath():
 @threader
 def autostartllamacpp(force=False):
     if (not force) and (not globalconfig["llama.cpp"].get("autolaunch", False)):
-        if not force:
-            autoupdatellamacpp(None, None)
         return
 
     llamaserver = getllamaserverpath()
@@ -1031,17 +1240,14 @@ def autostartllamacpp(force=False):
         return
     gguf = getggufpath()
     if not gguf:
-        if not force:
-            autoupdatellamacpp(llamaserver, None)
         return
 
     gobject.base.translation_ui.displayglobaltooltip.emit("loading llama.cpp")
 
-    version = __getllamacppversion(llamaserver)
+    version, std = __getllamacppversion(llamaserver, std=True)
     if not version:
         return
-    if not force:
-        autoupdatellamacpp(llamaserver, version)
+    gobject.base.llamacppstdout.emit(std)
     cmd = getllamaservercmd(llamaserver, gguf, version)
     global llamacppautoHandle
     loghandle = open(gobject.getcachedir("llama-server.log"), "a", encoding="utf8")
@@ -1107,12 +1313,7 @@ class AdvancedTreeTable(QTreeWidget):
         self.setMinimumHeight(300)
 
     def setup_ui(self):
-        self.headers = [
-            ("模型"),
-            ("大小"),
-            ("更新时间"),
-            ("下载"),
-        ]
+        self.headers = [("模型"), ("大小"), ("更新时间"), ("下载")]
         self.setHeaderLabels(_TR(self.headers))
         header = self.header()
         header.setSectionsClickable(True)
@@ -1263,33 +1464,10 @@ class AdvancedTreeTable(QTreeWidget):
         self._itemDoubleClicked(False, item)
 
 
-class llamalistQwidget(QWidget):
-    def __init__(self):
-        super().__init__()
-        lay = QVBoxLayout(self)
-        self.versionlabel = getsmalllabel()()
-        self.newversionlabel = LinkLabel()
-        versions = QHBoxLayout()
-        lay.setContentsMargins(0, 0, 0, 0)
-        lay.addLayout(versions)
-        lay.addWidget(llamalistQwidget_internal(self))
-        versions.addWidget(getsmalllabel("自动更新")())
-        versions.addWidget(
-            getsimpleswitch(globalconfig["llama.cpp"], "autoupdate", default=False)
-        )
-        versions.addWidget(getsmalllabel("当前版本")())
-        gobject.base.connectsignal(
-            gobject.base.llamacppcurrversion,
-            lambda v: self.versionlabel.setText(str(v) if v else "-"),
-        )
-        versions.addWidget(self.versionlabel)
-        versions.addWidget(getsmalllabel("最新版本")())
-        versions.addWidget(self.newversionlabel)
-
-
 class llamalisttable(LTableView):
     def __init__(self):
         super().__init__()
+        self.setMinimumHeight(250)
         self.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -1305,20 +1483,9 @@ class llamalisttable(LTableView):
                     else QHeaderView.ResizeMode.ResizeToContents
                 ),
             )
+        self.initialize_(tryreadconfig2("llama.cpp.version.json"))
 
-    def initialize_(
-        self,
-        p: "llamalistQwidget_internal",
-        parnet: llamalistQwidget,
-        res: "dict|Exception",
-    ):
-        if isinstance(res, Exception):
-            p.link.setText(stringfyerror(res) + "<br>" + p.t)
-            p.refs.show()
-            return
-
-        p.setCurrentIndex(1)
-        parnet.newversionlabel.setText(makehtml(res["html_url"], res["tag_name"][1:]))
+    def initialize_(self, res: "dict"):
         cudas = {}
         cudasdigest = {}
         for _ in res["assets"]:
@@ -1328,6 +1495,7 @@ class llamalisttable(LTableView):
                 continue
             cudasdigest[maich.groups()[0]] = _["digest"]
             cudas[maich.groups()[0]] = _["browser_download_url"]
+        xpus = NativeUtils.ListXpuVendors().union(NativeUtils.ListXpuVendors(False))
         for _ in res["assets"]:
             name: str = _["name"]
             maich = re.match(r"llama-.*?-bin-win-(.*?)-x64\.zip", name)
@@ -1336,36 +1504,44 @@ class llamalisttable(LTableView):
             arch = maich.groups()[0]
             size = format_bytes(_["size"])
             _arch = arch
+            enable = True
             if arch == "sycl":
-                arch += " (Intel GPU/NPU)"
+                arch += " (Intel)"
+                enable = "8086" in xpus
             elif arch.startswith("openvino"):
-                arch += " (Intel GPU/NPU)"
+                arch += " (Intel)"
+                enable = "8086" in xpus
             elif arch.startswith("cuda"):
-                arch += " (Nvidia GPU)"
+                arch += " (Nvidia)"
+                enable = "10DE" in xpus
             elif arch == "hip-radeon":
-                arch += " (AMD GPU/NPU)"
+                arch += " (AMD)"
+                enable = "1022" in xpus
+            elif arch.startswith("rocm"):
+                arch += " (AMD)"
+                enable = "1022" in xpus
             elif arch == "vulkan":
                 arch += "_(通用)"
             item = LStandardItem(arch)
             item.setData(_["browser_download_url"], Qt.ItemDataRole.UserRole + 2)
             item.setData(res["tag_name"], Qt.ItemDataRole.UserRole + 10)
             item.setData(_["digest"], Qt.ItemDataRole.UserRole + 4)
+            item.setData(_arch, Qt.ItemDataRole.UserRole + 6)
             item.setData(cudas.get(_arch, ""), Qt.ItemDataRole.UserRole + 3)
             item.setData(cudasdigest.get(_arch, ""), Qt.ItemDataRole.UserRole + 30)
             item3 = LStandardItem()
             item2 = QStandardItem(size)
             item2.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             item3.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.Model.appendRow([item, item2, item3])
+            items = [item, item2, item3]
+            self.Model.appendRow(items)
+            [_.setEnabled(enable) for _ in items]
         gobject.base.connectsignal(gobject.base.llamacpparchcheck, self.__archcheck)
 
-    def __archcheck(
-        self,
-        llamaserver: "None|str",
-    ):
+    def __archcheck(self, llamaserver: "None|str"):
         insarchs = detect_llama_installed_archs(llamaserver)
         for i in range(self.Model.rowCount()):
-            arch = self.Model.item(i, 0).text()
+            arch: str = self.Model.item(i, 0).data(Qt.ItemDataRole.UserRole + 6)
             item: LStandardItem = self.Model.item(i, 2)
             item.setText("")
             item.setToolTip("")
@@ -1382,6 +1558,7 @@ class llamalisttable(LTableView):
                 else:
                     t = "重新下载"
             btn = LPushButton(t)
+            btn.setEnabled(item.isEnabled())
             btn.clicked.connect(
                 functools.partial(self.__click_download, i, arch, cudaonly)
             )
@@ -1410,65 +1587,6 @@ class llamalisttable(LTableView):
                 "cudart-" + arch,
                 functools.partial(___, "cudart-" + arch, cudalink, cudadig, tag),
             )
-
-
-class llamalistQwidget_internal(QStackedWidget):
-    initialize = pyqtSignal(object)
-
-    def __init__(self, parnet: llamalistQwidget):
-        super().__init__()
-        self.setMinimumHeight(250)
-        self.setContentsMargins(0, 0, 0, 0)
-        w = QWidget()
-        table = llamalisttable()
-        self.addWidget(w)
-        self.addWidget(table)
-        l1 = QVBoxLayout(w)
-        hb = QHBoxLayout()
-        self.refs = IconButton("fa.refresh", tips="刷新")
-        self.refs.setFixedSize(QSize(75, 75))
-        self.refs.hide()
-        hb.addWidget(self.refs)
-        hb.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        l1.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        l1.addLayout(hb)
-        self.refs.clicked.connect(self.firstshow)
-        self.link = LinkLabel()
-        self.link.setWordWrap(True)
-        self.link.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
-        l1.addWidget(self.link)
-        self.t = makehtml("https://github.com/ggml-org/llama.cpp/releases")
-        self.link.setText("loading...")
-        self.loadonce = True
-        self.initialize.connect(functools.partial(table.initialize_, self, parnet))
-        self.firstshow()
-
-    @threader
-    def firstshow(self, _=None):
-        try:
-            res = requests.get(
-                "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest",
-                proxies=getproxy(),
-            ).json()
-            if not "tag_name" in res:
-                raise Exception(res)
-        except Exception as e:
-            self.initialize.emit(e)
-            return
-        if not self.loadonce:
-            return
-        self.loadonce = False
-        self.initialize.emit(res)
-
-
-def llamalist():
-    return llamalistQwidget()
-
-
-def modellist():
-    return AdvancedTreeTable()
 
 
 def _detect_runtime_lost(d, ff):
@@ -1749,9 +1867,12 @@ def llamacppgrid():
         else:
             global llamacppautoHandle
             llamacppautoHandle = None
+            update_text(label2)
 
     statusbtn.clicked.connect(_cb)
 
+    label2 = QLabel()
+    label2.hide()
     label = tipslabel()
     label.setWordWrap(True)
     gobject.base.connectsignal(gobject.base.llamacppstdoutstatus, label.test)
@@ -1769,6 +1890,7 @@ def llamacppgrid():
         else:
             statusbtn.setIconStr(("fa.play", "fa.spinner", "fa.stop")[status])
             statusbtn.setToolTip(("启动", "启动中", "停止")[status])
+            statusbtn.setAccessibleName(("启动", "启动中", "停止")[status])
         statusbtn.setEnabled(
             ((statusbtn.iconStr() == "fa.play") and BTNPlayEnable1 and BTNPlayEnable2)
             or (statusbtn.iconStr() != "fa.play")
@@ -1783,6 +1905,9 @@ def llamacppgrid():
     logopenbtn = IconButton(
         "fa.terminal", tips="log", checkable=True, checkablechangecolor=False
     )
+    timer = QTimer(logopenbtn)
+    timer.timeout.connect(functools.partial(update_text, label2))
+    timer.start(1000)
     form = VisLFormLayout()
     form.addRow(
         "伴随启动",
@@ -1795,7 +1920,7 @@ def llamacppgrid():
                 statusbtn,
                 getsmalllabel(""),
                 logopenbtn,
-                getsmalllabel(""),
+                label2,
                 label,
             ]
         ),
@@ -1838,10 +1963,10 @@ def llamacppgrid():
                 hiderows=[1, 2, 4],
                 grid=[
                     ["llama-server", _0, combollama, _2, _3, _4],
-                    [llamalist],
+                    [llamalisttable],
                     ["Device", devicelist],
                     ["Model", _02, _12, _22, _32, _42],
-                    [modellist],
+                    [AdvancedTreeTable],
                 ],
             ),
         ],
@@ -1851,13 +1976,11 @@ def llamacppgrid():
                 type="grid",
                 grid=[
                     [
-                        "--port",
-                        D_getspinbox(
-                            0, 65536, globalconfig["llama.cpp"], "port", default=8080
-                        ),
-                        "",
                         "--host",
                         functools.partial(_edit, "host", "127.0.0.1"),
+                        "",
+                        "--port",
+                        portnum,
                     ],
                 ],
             ),
@@ -1920,10 +2043,10 @@ def llamacppgrid():
                     ],
                     [
                         getsmalllabel(
-                            "whether to memory-map model (--mmap)",
-                            "--mmap, --no-mmap  whether to memory-map model (if disabled, slower load but may reduce pageouts if not using mlock) (default: enabled)",
+                            "model loading mode (--load-mode)",
+                            "-lm,   --load-mode MODE                 model loading mode (default: mmap)",
                         ),
-                        mmapmlock,
+                        loadmodewidget,
                     ],
                     [
                         getsmalllabel(
@@ -1936,6 +2059,24 @@ def llamacppgrid():
             )
         ],
     ]
+
+
+def update_text(label: QLabel):
+    if not llamacppautoHandle:
+        gobject.base.safeinvokefunction.emit(lambda: (label.hide(), label.setText("")))
+        return
+    mem = NativeUtils.GetProcessMemory(llamacppautoHandle.pid)
+    vmem = NativeUtils.GetProcessVRAM(llamacppautoHandle.pid, True)
+    text = ""
+    if mem > 1024 * 1024 * 64:
+        mem = format_bytes(mem)
+        text += _TR("内存占用: {}").format(mem)
+    if vmem > 1024 * 1024 * 64:
+        vmem = format_bytes(vmem)
+        if text:
+            text += " "
+        text += _TR("显存占用: {}").format(vmem)
+    gobject.base.safeinvokefunction.emit(lambda: (label.show(), label.setText(text)))
 
 
 def __showllamacpp(ref: "list[CollapsibleBoxWithButton]", checked):
@@ -1985,6 +2126,7 @@ def leftwidget(self, ref: "list[CollapsibleBoxWithButton]"):
     btn4 = AutoScaleImageButton(
         r"files\static\llama.cpp.light.png", r"files\static\llama.cpp.dark.png"
     )
+    btn4.setAccessibleName("llama.cpp Launcher")
     btn4.setToolTip("llama.cpp Launcher")
     btn4.clicked.connect(functools.partial(__showllamacpp, ref))
     lb = QLabel()

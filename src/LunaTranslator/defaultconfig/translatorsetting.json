@@ -1,9 +1,4 @@
 {
-	"lingva": {
-		"args": {
-			"host": "translate.plausibility.cloud"
-		}
-	},
 	"google": {},
 	"chromeai": {
 		"args": {
@@ -402,15 +397,15 @@
 			"model": "",
 			"modellistcache": [],
 			"附带上下文个数": 0,
-			"cachecontext": false,
 			"use_max_completion_tokens": false,
 			"API接口地址": "",
 			"SECRET_KEY": "",
 			"使用自定义promt": false,
 			"自定义promt": "",
 			"流式输出": true,
-			"Temperature": 0,
 			"max_tokens": 1024,
+			"Temperature": 0,
+			"Temperature.use": true,
 			"top_p": 0.3,
 			"top_p_use": true,
 			"frequency_penalty": 0,
@@ -440,10 +435,6 @@
 					"disabled",
 					"enabled"
 				]
-			},
-			"cachecontext": {
-				"name": "优化缓存命中",
-				"type": "switch"
 			},
 			"customparams": {
 				"name": "其他参数",
@@ -520,7 +511,7 @@
 					"low",
 					"medium",
 					"high",
-					"xhign"
+					"xhigh"
 				],
 				"list": [
 					"none",
@@ -528,7 +519,7 @@
 					"low",
 					"medium",
 					"high",
-					"xhign"
+					"xhigh"
 				]
 			},
 			"use_max_completion_tokens": {
@@ -555,15 +546,13 @@
 				"placeholder": "You are a translator. Please help me translate the following {srclang} text into {tgtlang}. You should only tell me the translation result without any additional explanations."
 			},
 			"附带上下文个数": {
-				"appends": [
-					"cachecontext"
-				],
 				"type": "intspin",
 				"min": 0,
 				"max": 99999,
 				"rank": 2.4
 			},
 			"Temperature": {
+				"refswitch": "Temperature.use",
 				"type": "spin",
 				"min": 0,
 				"max": 2,
@@ -724,8 +713,9 @@
 			"流式输出": true,
 			"append_context_num": 3,
 			"use_context": false,
-			"Temperature": 0.6,
 			"max_tokens": 1024,
+			"Temperature": 0.6,
+			"Temperature.use": true,
 			"top_p": 0.8,
 			"top_p_use": true,
 			"frequency_penalty": 0,
@@ -799,6 +789,7 @@
 				"rank": 4
 			},
 			"Temperature": {
+				"refswitch": "Temperature.use",
 				"type": "spin",
 				"min": 0,
 				"max": 2,

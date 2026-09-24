@@ -58,3 +58,5 @@ src/NativeImpl/LunaHook/LunaHook/engine32/font0.dat
 src/NativeImpl/LunaHook/LunaHook/engine32/font.dat
 spacy_wrapper
 src/DirectLiveCaptions
+*.onnx
+src/LunaTranslator/defaultconfig/llama.cpp.version.json

@@ -28,6 +28,8 @@ def checkusewhich():
         else:
             # win7上无边框窗口渲染有问题，所以一定不优先
             globalconfig["rendertext_using"] = "textbrowser"
+    elif gobject.sys_le_xp:
+        globalconfig["rendertext_using"] = "textbrowser"
 
 
 class Textbrowser(QFrame):
@@ -39,7 +41,13 @@ class Textbrowser(QFrame):
 
     def _contentsChanged(self, size: QSize):
         size.setHeight(max(size.height(), globalconfig.get("min_auto_height", 0)))
+        self._lastcontentsize = size
         self.contentsChanged.emit(size)
+
+    def resendcontentsize(self):
+        size = getattr(self, "_lastcontentsize", None)
+        if size is not None:
+            self.contentsChanged.emit(size)
 
     def loadinternal(self, shoudong=False, forceReload=False):
         checkusewhich()
@@ -102,6 +110,7 @@ class Textbrowser(QFrame):
         self.cleared = True
         self.curr_eng = None
         self.trace = []
+        self._lastcontentsize = None
 
     def iter_append(
         self,

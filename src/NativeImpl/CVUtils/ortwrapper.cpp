@@ -32,7 +32,7 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_DML, _In_ OrtSessionOpti
 #define STRINGT Ort::AllocatedStringPtr
 #define FGetInputName GetInputNameAllocated
 #define FGetOutputName GetOutputNameAllocated
-#define GetVector(X) {X.data()->get()}
+#define GetVector(X) [&] { std::vector<const char *> _v; _v.reserve((X).size()); for (auto &_p : (X)) _v.push_back(_p.get()); return _v; }()
 #endif
 
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions *options, _In_ const char *device_type)
@@ -84,6 +84,9 @@ class pOnnxSession
     std::unique_ptr<Ort::Session> session;
     Ort::Env env = Ort::Env(ORT_LOGGING_LEVEL_ERROR);
     Ort::SessionOptions sessionOptions = Ort::SessionOptions();
+    std::vector<const char *> inputNames;
+    std::vector<const char *> outputNames;
+    Ort::MemoryInfo memoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
 
     template <typename T, typename Func, typename Func2>
     void getinputoutputNames(T &vec, Func func, Func2 func2)
@@ -145,25 +148,24 @@ public:
         {
             // https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html
             // If creating the onnxruntime InferenceSession object directly, you must set the appropriate fields on the onnxruntime::SessionOptions struct. Specifically, execution_mode must be set to ExecutionMode::ORT_SEQUENTIAL, and enable_mem_pattern must be false.
-            sessionOptions.SetExecutionMode(ExecutionMode::ORT_PARALLEL);
+            sessionOptions.SetExecutionMode(ExecutionMode::ORT_SEQUENTIAL);
             sessionOptions.DisableMemPattern();
         }
         sessionOptions.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_ENABLE_ALL);
         session = std::make_unique<Ort::Session>(env, path.c_str(), sessionOptions);
         getinputoutputNames(inputNamesPtr, &Ort::Session::GetInputCount, &Ort::Session::FGetInputName);
         getinputoutputNames(outputNamesPtr, &Ort::Session::GetOutputCount, &Ort::Session::FGetOutputName);
+        inputNames = GetVector(inputNamesPtr);
+        outputNames = GetVector(outputNamesPtr);
     }
 
     std::pair<std::vector<float>, std::vector<int64_t>> RunSession(const std::array<int64_t, 4> &inputShape,
                                                                    std::vector<float> &inputTensorValues)
     {
-        auto memoryInfo = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
         Ort::Value inputTensor = Ort::Value::CreateTensor<float>(memoryInfo, inputTensorValues.data(),
                                                                  inputTensorValues.size(), inputShape.data(),
                                                                  inputShape.size());
         assert(inputTensor.IsTensor());
-        std::vector<const char *> inputNames = GetVector(inputNamesPtr);
-        std::vector<const char *> outputNames = GetVector(outputNamesPtr);
         std::vector<Ort::Value> outputTensor;
         {
             // https://onnxruntime.ai/docs/execution-providers/DirectML-ExecutionProvider.html

@@ -51,7 +51,7 @@ https://ocr.space/
 
 == Универсальный интерфейс для больших моделей
 
-То же, что и [перевод](/zh/guochandamoxing.html)
+То же, что и [перевод](/ru/guochandamoxing.html)
 
 :::
 
@@ -89,7 +89,7 @@ https://ocr.space/
 
     Если используется процессор Intel (CPU/NPU/GPU), механизм вывода можно заменить на OpenVINO для ускорения распознавания.
     
-    Скачайте [onnxruntime-openvino](https://globalcdn.nuget.org/packages/intel.ml.onnxruntime.openvino.1.23.0.nupkg). После распаковки скопируйте все файлы из папки **runtimes/win-x64/native** в папку **LunaTranslator/files/DLL64**, затем выберите используемое устройство.
+    Скачайте [onnxruntime-openvino](https://globalcdn.nuget.org/packages/intel.ml.onnxruntime.openvino.1.24.1.nupkg). После распаковки скопируйте все файлы из папки **runtimes/win-x64/native** в папку **LunaTranslator/files/DLL64**, затем выберите используемое устройство.
 
     ![img](https://image.lunatranslator.org/zh/ov_device.png)
 
@@ -114,7 +114,7 @@ CPU сборка https://lunatranslator.org/Resource/IntegrationPack/manga_ocr/c
 
 GPU сборка https://lunatranslator.org/Resource/IntegrationPack/manga_ocr/gpu
 
-#### Что делать, если сборка mangaocr для Китая не запускается？
+#### Что делать, если сборка mangaocr для Китая не запускается?
 
 При первом запуске start.bat будет попытка загрузить модель с huggingface, но в Китае… вы понимаете.
 

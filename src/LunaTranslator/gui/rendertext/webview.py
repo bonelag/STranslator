@@ -5,14 +5,16 @@ from gui.rendertext.texttype import (
     ColorControl,
     SpecialColor,
     FenciColor,
+    FontInfo,
 )
 import gobject, windows, json, os, functools, time
 import hashlib, NativeUtils
 from urllib.parse import quote
-from myutils.config import globalconfig, static_data, _TR
+from myutils.config import globalconfig, static_data, ui_settings, _TR
 from myutils.wrapper import threader
 import copy, uuid
 from gui.usefulwidget import WebviewWidget
+from gui.RichMessageBox import RichMessageBox
 from sometypes import WordSegResult
 from gui.rendertext.tooltipswidget import tooltipswidget
 from gui.qevent import TransparentChangedEvent
@@ -46,18 +48,18 @@ class somecommon(dataget):
         self.showhidetranslate(globalconfig.get("showfanyi", True))
         self.showhidename(globalconfig.get("showfanyisource", False))
         self.showatcenter(globalconfig.get("showatcenter", True))
-        self.showtextareabackground(globalconfig.get("text_area_background", False))
+        self.showtextareabackground(ui_settings.get("text_area_background", False))
         self.setTextAreaBackStyle()
         self.showhideclick()
         self.showhidert(globalconfig.get("isshowhira", True))
         self.setfontstyle()
         self.setdisplayrank(globalconfig.get("displayrank", 0))
-        self.sethovercolor(globalconfig["hovercolor"])
+        self.sethovercolor(globalconfig.get("hovercolor", "#80000000"))
         self.settooltipsstyle(
-            globalconfig["word_hover_bg_color"],
-            globalconfig["word_hover_text_color"],
-            globalconfig["word_hover_border"],
-            globalconfig["word_hover_border_R"],
+            ui_settings.get("word_hover_bg_color", "#333"),
+            ui_settings.get("word_hover_text_color", "white"),
+            ui_settings.get("word_hover_border", 8),
+            ui_settings.get("word_hover_border_R", 4),
         )
         self.verticalhorizontal(globalconfig.get("verticalhorizontal", False))
         self.setwordhoveruse(globalconfig.get("word_hover_action_usewb2", False))
@@ -69,9 +71,9 @@ class somecommon(dataget):
 
     # js api
     def setbackgroudimageandopt(self):
-        use = not globalconfig.get("backtransparent", False)
-        opt = globalconfig.get("transparent_pic", 0) / 100 if use else 0
-        url: str = globalconfig.get(
+        use = not ui_settings.get("backtransparent", False)
+        opt = ui_settings.get("transparent_pic", 0) / 100 if use else 0
+        url: str = ui_settings.get(
             "backgroundpic", "https://image.lunatranslator.org/luna.jpg"
         )
         if not any((url.lower().startswith(_)) for _ in ("https://", "http://")):
@@ -94,14 +96,14 @@ class somecommon(dataget):
         self.debugeval("showtextareabackground({})".format(int(show)))
 
     def setTextAreaBackStyle(self, **_):
-        c = QColor(globalconfig.get("text_area_background_color", "#ff0000"))
+        c = QColor(ui_settings.get("text_area_background_color", "pink"))
         self.debugeval(
             "setTextAreaBackStyle({}, {}, {}, '{}', {})".format(
-                globalconfig.get("text_area_background_r", 5),
-                globalconfig.get("text_area_background_w", 5),
-                globalconfig.get("text_area_background_h", 5),
+                ui_settings.get("text_area_background_r", 5),
+                ui_settings.get("text_area_background_w", 5),
+                ui_settings.get("text_area_background_h", 5),
                 c.name(QColor.NameFormat.HexRgb),
-                globalconfig.get("text_area_background_alpha", 50) / 100,
+                ui_settings.get("text_area_background_alpha", 85) / 100,
             )
         )
 
@@ -160,9 +162,8 @@ class somecommon(dataget):
                     marginBottom=lhdict.get("marginBottom", 0),
                 )
 
-        def loadfont(argc, lhdict=None):
-            fm, fs, bold = argc
-            args = dict(fontFamily=fm, fontSize=fs, bold=bold)
+        def loadfont(info: FontInfo, lhdict=None):
+            args = info.dict
             updateextra(args, lhdict)
             return args
 
@@ -175,6 +176,8 @@ class somecommon(dataget):
                 klassextra["fontSize"] = data["fontsize"]
             if (not data.get("showbold_df", True)) and ("showbold" in data):
                 klassextra["bold"] = data["showbold"]
+            if (not data.get("showitalic_df", True)) and ("showitalic" in data):
+                klassextra["italic"] = data["showitalic"]
             if not data.get("lineheight_df", True):
                 updateextra(klassextra, data)
             extra[klass] = klassextra
@@ -342,27 +345,62 @@ class somecommon(dataget):
         self.setcolorstyle()
 
 
+def get_sorted_toolbuttonitems():
+    buttons = []
+    for (
+        clicked,
+        rightclick,
+        tip,
+        name,
+        iconstate,
+        colorstate,
+        middleclick,
+    ) in gobject.base.translation_ui.create_buttons():
+        if not clicked:
+            continue
+        if not tip:
+            continue
+        if not gobject.base.translation_ui.buttondisplaychecker(name):
+            continue
+        sorter = (
+            {0: 0, 1: 2, 2: 1}[globalconfig["toolbutton"]["buttons"][name]["align"]],
+            globalconfig["toolbutton"]["rank2"].index(name),
+        )
+        buttons.append((tip, clicked, sorter, iconstate if iconstate else colorstate))
+    return sorted(buttons, key=lambda _: _[2])
+
+
 class TextBrowser(WebviewWidget, somecommon):
     contentsChanged = pyqtSignal(QSize)
     _switchcursor = pyqtSignal(Qt.CursorShape)
     _isDragging = pyqtSignal(bool)
     __tooltipshelper = pyqtSignal(object)
 
+    def crashed_callback(self, info: bytes):
+        RichMessageBox(
+            self,
+            _TR("错误"),
+            _TR("Webview2崩溃，将切换为Qt显示。") + "\n" + info.decode(),
+        )
+        globalconfig["rendertext_using"] = "textbrowser"
+        gobject.base.translation_ui.translate_text.loadinternal(True, True)
+        gobject.base.switchdisplayengine.emit("textbrowser")
+
     def on_menu(self, selecttext: str):
         if selecttext:
             return [
                 MenuItem(
-                    text=_TR("查词"),
+                    text="查词",
                     clicked=functools.partial(self.menusearchword, selecttext.strip()),
                 ),
                 MenuItem(
-                    text=_TR("翻译"),
+                    text="翻译",
                     clicked=functools.partial(
                         gobject.base.textgetmethod, selecttext.strip()
                     ),
                 ),
                 MenuItem(
-                    text=_TR("朗读"),
+                    text="朗读",
                     clicked=functools.partial(
                         gobject.base.read_text, selecttext.strip()
                     ),
@@ -378,30 +416,30 @@ class TextBrowser(WebviewWidget, somecommon):
                 globalconfig["hidetools"] = not globalconfig.get("hidetools", False)
                 gobject.base.translation_ui.enterfunction()
 
-            return [
+            items = [
                 MenuItem(
-                    text=_TR("清空"),
+                    text="清空",
                     clicked=self.___cleartext,
                 ),
                 MenuItem(
-                    text=_TR("设置"),
+                    text="设置",
                     clicked=gobject.base.settin_ui_showsignal.emit,
                 ),
                 MenuItem(issep=True),
                 MenuItem(
-                    text=_TR("可拖动的"),
+                    text="可拖动的",
                     clicked=__cb,
                     checkable=True,
                     checked=globalconfig.get("dragable", True),
                 ),
                 MenuItem(
-                    text=_TR("隐藏工具栏"),
+                    text="隐藏工具栏",
                     clicked=__cb2,
                     checkable=True,
-                    checked=globalconfig.get("hidetools", True),
+                    checked=globalconfig.get("hidetools", False),
                 ),
                 MenuItem(
-                    text=_TR("鼠标滚动查看历史文本"),
+                    text="鼠标滚动查看历史文本",
                     clicked=lambda: globalconfig.__setitem__(
                         "enable_wheel_history",
                         not globalconfig.get("enable_wheel_history", True),
@@ -410,6 +448,21 @@ class TextBrowser(WebviewWidget, somecommon):
                     checked=globalconfig.get("enable_wheel_history", True),
                 ),
             ]
+
+            gongjulan = MenuItem(text="工具按钮")
+            for tip, clicked, _, check in get_sorted_toolbuttonitems():
+                gongjulan.appendSub(
+                    MenuItem(
+                        text=tip,
+                        clicked=functools.partial(
+                            threader(gobject.base.safeinvokefunction.emit), clicked
+                        ),
+                        checkable=bool(check),
+                        checked=check() if check else None,
+                    )
+                )
+            items.insert(0, gongjulan)
+            return items
 
     def event(self, a0: QEvent) -> bool:
         if isinstance(a0, TransparentChangedEvent):
@@ -455,9 +508,10 @@ class TextBrowser(WebviewWidget, somecommon):
                 QCursor.pos(),
             )
         )
-        lb = windows.GetKeyState(windows.VK_LBUTTON) < 0
+        lb1 = windows.GetKeyState(windows.VK_LBUTTON) < 0
         rb1 = windows.GetKeyState(windows.VK_RBUTTON) < 0
-        if not lb and not rb1:
+        mb1 = windows.GetKeyState(windows.VK_MBUTTON) < 0
+        if not lb1 and not rb1 and not mb1:
             return
         uid = uuid.uuid4()
         self.trans0checkercheck = uid
@@ -466,9 +520,12 @@ class TextBrowser(WebviewWidget, somecommon):
             return
         lb = windows.GetKeyState(windows.VK_LBUTTON) < 0
         rb = windows.GetKeyState(windows.VK_RBUTTON) < 0
-        if lb or rb:
+        mb = windows.GetKeyState(windows.VK_MBUTTON) < 0
+        if lb or rb or mb:
             return
-        gobject.base.clickwordcallback(word, rb1)
+        gobject.base.clickwordcallback(
+            word, "left" if lb1 else ("right" if rb1 else "mid")
+        )
 
     @threader
     def menusearchword(self, w: str):
@@ -476,7 +533,7 @@ class TextBrowser(WebviewWidget, somecommon):
         if w not in sentence:
             sentence = None
         gobject.base.searchwordW.search_word.emit(
-            w.replace("\n", "").strip(), sentence, False
+            dict(word=w.replace("\n", "").strip(), sentence=sentence)
         )
 
     def __init__(self, parent) -> None:
@@ -513,6 +570,7 @@ class TextBrowser(WebviewWidget, somecommon):
         self.trans0checkercheck = None
         self.trans0checker = QTimer(self)
         self.trans0checker.timeout.connect(self.__checkmousestate)
+        self.webview.setfocus()
 
     def ___cleartext(self):
         self.parent().clear(False)
@@ -570,7 +628,7 @@ class TextBrowser(WebviewWidget, somecommon):
 
     @staticmethod
     def loadextra():
-        if not globalconfig["useextrahtml"]:
+        if not globalconfig.get("useextrahtml", False):
             return
         for _ in [
             gobject.getconfig("extrahtml.html"),

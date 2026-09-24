@@ -1,11 +1,12 @@
 
+#include "pipehost.hpp"
 bool ehndSupport = false;
 class CTransEngine
 {
 public:
     CTransEngine();
     bool Init(std::wstring &szTransPath);
-    void GetEnginePath(std::wstring szEnginePath);
+    void GetEnginePath(std::wstring &szEnginePath);
     ~CTransEngine();
 
     void J2K_FreeMem(void *addr);
@@ -42,7 +43,7 @@ CTransEngine::CTransEngine()
     // InitializeCriticalSection(&CriticalSection);
 }
 
-void CTransEngine::GetEnginePath(std::wstring szEnginePath)
+void CTransEngine::GetEnginePath(std::wstring &szEnginePath)
 {
     szEnginePath = EnginePath;
 }
@@ -53,7 +54,10 @@ bool CTransEngine::Init(std::wstring &szEnginePath)
     std::wstring szEngineDLL = szEnginePath + L"\\J2KEngine.dll";
     HMODULE hDLL = LoadLibrary(szEngineDLL.c_str());
     if (!hDLL)
+    {
         MessageBox(0, L"이지트랜스 번역 엔진 초기화 실패\r\n: LoadLibrary Failed", 0, MB_ICONERROR | MB_SYSTEMMODAL);
+        return false;
+    }
 
     wcscpy_s(EnginePath, szEngineDLL.c_str());
 
@@ -208,6 +212,7 @@ namespace CTextProcess
 std::wstring CTextProcess::HangulEncode(const std::wstring &input)
 {
     std::wstring output;
+    output.reserve(input.size() * 2);
     wchar_t buf[8];
 
     std::wstring::const_iterator it = input.begin();
@@ -584,6 +589,7 @@ std::wstring CTextProcess::HangulEncode(const std::wstring &input)
 std::wstring CTextProcess::HangulDecode(const std::wstring &input)
 {
     std::wstring output;
+    output.reserve(input.size());
     wchar_t buf[8];
     std::wstring::const_iterator it = input.begin();
     for (DWORD count = 0; it != input.end(); it++, count++)
@@ -643,6 +649,8 @@ std::optional<std::wstring> CTextProcess::eztrans_proc(const std::wstring &input
     if (ehndSupport)
     {
         lpszBuff = (wchar_t *)TransEngine->J2K_TranslateMMNTW(0, (wchar_t *)szContext.c_str());
+        if (!lpszBuff)
+            return {};
         output = lpszBuff;
         TransEngine->J2K_FreeMem(lpszBuff);
     }
@@ -659,6 +667,8 @@ std::optional<std::wstring> CTextProcess::eztrans_proc(const std::wstring &input
         WideCharToMultiByte(932, 0, szContext.c_str(), -1, szBuff, nBufLen, NULL, NULL);
         szBuff2 = (char *)TransEngine->J2K_TranslateMMNT(0, szBuff);
         delete[] szBuff;
+        if (!szBuff2)
+            return {};
 
         nBufLen = MultiByteToWideChar(949, 0, szBuff2, -1, NULL, NULL);
         lpszBuff = new wchar_t[((nBufLen + 2) * 2)];
@@ -678,33 +688,25 @@ std::optional<std::wstring> CTextProcess::eztrans_proc(const std::wstring &input
     output = HangulDecode(output);
     return output;
 }
-void writestring(const wchar_t *text, HANDLE hPipe);
-
 int eztrans(int argc, wchar_t *argv[])
 {
-    HANDLE hPipe = CreateNamedPipe(argv[2], PIPE_ACCESS_DUPLEX, PIPE_TYPE_MESSAGE | PIPE_READMODE_MESSAGE | PIPE_WAIT, PIPE_UNLIMITED_INSTANCES, 65535, 65535, NMPWAIT_WAIT_FOREVER, 0);
+    lunasp::PipeHost host(argv[1], argv[2]);
+    if (!host.ok())
+        return 0;
 
     // system("chcp 932");
 
-    std::wstring _p = argv[1]; //// LR"(C:\Program Files\ChangShinSoft\ezTrans XP)";
+    std::wstring _p = argv[3]; //// LR"(C:\Program Files\ChangShinSoft\ezTrans XP)";
     TransEngine = new CTransEngine();
-    TransEngine->Init(_p);
-
-    SetEvent(CreateEvent(&allAccess, FALSE, FALSE, argv[3]));
-    if (!ConnectNamedPipe(hPipe, NULL))
+    if (!TransEngine->Init(_p))
         return 0;
-    WCHAR buff[6000];
+
     while (true)
     {
-        DWORD _;
-        ZeroMemory(buff, 12000);
-        if (!ReadFile(hPipe, buff, 12000, &_, NULL))
+        auto src = host.readstring();
+        if (!src)
             break;
-        auto trans = CTextProcess::eztrans_proc(buff);
-        if (trans)
-            writestring(trans.value().c_str(), hPipe);
-        else
-            writestring(0, hPipe);
+        host.writestring(CTextProcess::eztrans_proc(*src));
     }
 
     return 0;

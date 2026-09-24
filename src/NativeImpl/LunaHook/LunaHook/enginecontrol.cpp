@@ -95,6 +95,7 @@ bool checkengine()
         bool attached = safeattach(m, enginename.c_str());
         if (attached)
         {
+            Msg::EngineType(enginename.c_str());
             jittypedefault = m->jittype;
             if (jittypedefault != JITTYPE::PC)
             {

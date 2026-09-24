@@ -4,7 +4,7 @@ import time
 import functools
 import os
 import base64
-import uuid
+import uuid, threading
 from urllib.parse import quote
 from traceback import print_exc
 import qtawesome
@@ -12,24 +12,29 @@ import requests
 import gobject
 import windows
 import NativeUtils
+from LunaSubProcess import LunaSubProcess
 import traceback
 from collections import Counter
 from urllib.parse import urlparse
 import myutils.ankiconnect as anki
 from collections import OrderedDict
 from myutils.hwnd import grabwindow
+from collections import defaultdict
 from myutils.config import globalconfig, static_data, _TR, dynamiclink
 from myutils.utils import (
     stringfyerror,
     dynamiccishuname,
+    cishuexits,
     loopbackrecorder,
     selectdebugfile,
     parsekeystringtomodvkcode,
     getimageformatlist,
     getimagefilefilter,
     checkmd5reloadmodule,
+    ffmpeg_record,
     getimageformat,
 )
+from gui.setting.hotkey import setTab_quick_lazy
 from NativeUtils import MenuItem
 from cishu.cishubase import DictionaryRoot
 from sometypes import WordSegResult
@@ -40,13 +45,17 @@ from gui.rangeselect import rangeselct_function
 from gui.RichMessageBox import RichMessageBox
 from gui.usefulwidget import (
     closeashidewindow,
+    getIconSwitch,
     auto_select_webview,
+    PopupWidget,
     WebviewWidget,
     MSHtmlWidget,
     EdgeHtmlWidget,
+    makescrollgrid,
     IconButton,
     getboxlayout,
     getboxwidget,
+    create_centered_rect,
     getspinbox,
     getsimplecombobox,
     getlineedit,
@@ -60,9 +69,9 @@ from gui.usefulwidget import (
     getIconButton,
     tabadd_lazy,
     threeswitch,
-    VisLFormLayout,
+    VisGridLayout,
 )
-from gui.dynalang import LPushButton, LLabel, LTabWidget, LTabBar, LAction
+from gui.dynalang import LPushButton, LLabel, LTabWidget, LTabBar, LAction, LFormLayout
 from myutils.audioplayer import bass_code_cast
 from tts.basettsclass import TTSResult
 
@@ -70,7 +79,7 @@ from tts.basettsclass import TTSResult
 def cishusX():
     __ = []
     for K in globalconfig["cishu"]:
-        if os.path.isfile("LunaTranslator/cishu/{}.py".format(K)):
+        if cishuexits(K):
             __.append(K)
     return __
 
@@ -201,13 +210,13 @@ class AnkiWindow(QWidget):
 
         def ocroncefunction(rect, img=None):
             if not img:
-                img = imageCut(0, rect[0][0], rect[0][1], rect[1][0], rect[1][1])
+                img = imageCut(0, rect)
             if img.isNull():
                 return
             fname = gobject.gettempdir(str(uuid.uuid4()) + "." + getimageformat())
             img.save(fname)
             self.settextsignal.emit(self.editpath, os.path.abspath(fname))
-            if globalconfig["ankiconnect"]["ocrcroped"]:
+            if globalconfig["ankiconnect"].get("ocrcroped", False):
                 self.asyncocr(img)
 
         rangeselct_function(ocroncefunction, self.window(), hideshow=True)
@@ -225,6 +234,7 @@ class AnkiWindow(QWidget):
         self.tabs = makesubtab_lazy(callback=self.ifshowrefresh)
         self.tabs.addTab(self.createaddtab(), "添加")
         tabadd_lazy(self.tabs, "设置", self.creatsetdtab)
+        tabadd_lazy(self.tabs, "快捷键", self.createhotkeytab)
         tabadd_lazy(self.tabs, "模板", self.creattemplatetab)
 
         l = QHBoxLayout(self)
@@ -254,7 +264,7 @@ class AnkiWindow(QWidget):
         self.orientswitch.move(x, 0)
 
     def ifshowrefresh(self, idx):
-        if idx == 2:
+        if idx == 3:
             self.refreshhtml.emit()
 
     def parse_template(self, template: str, data):
@@ -283,8 +293,10 @@ class AnkiWindow(QWidget):
             self.previewtab.currentIndex()
         ].toPlainText()
         model_css = self.csstext.toPlainText()
-        text_fields, audios, pictures = self.getfieldsdataall()
-        text_fields.update(self.parseaudiopictures(audios, pictures))
+        text_fields, medias = self.getfieldsdataall()
+        text_fields.update(
+            self.parseaudiopictures(medias.get("audio", []), medias.get("picture", []))
+        )
         html = self.parse_template(html, text_fields)
         html = '<style>{}</style><div class="card">{}</div>'.format(model_css, html)
         self.htmlbrowser.setHtml(html)
@@ -354,7 +366,7 @@ class AnkiWindow(QWidget):
         dictionarys = self.refsearchw.wordviewer.generate_dictionarys()
         remarks = self.remarks.toPlainText()
         example = self.example.toPlainText()
-        if globalconfig["ankiconnect"]["boldword"]:
+        if globalconfig["ankiconnect"].get("boldword", False):
             if self.example_hiras is None:
                 _hs = gobject.base.parsehira(example)
                 self.example_hiras = mecab.parseastarget(_hs)
@@ -386,14 +398,21 @@ class AnkiWindow(QWidget):
         }
         return fields
 
-    def parseaudiopictures(self, audios: list, pictures: list):
+    def parseaudiopictures(
+        self, audios: "list[dict[str, str]]", pictures: "list[dict[str, str]]"
+    ):
         fields = {}
         for i, targets in enumerate([audios, pictures]):
             for target in targets:
+                uid = str(uuid.uuid4())
                 b64 = target.get("data")
                 if not b64:
+                    path = target.get("path")
+                    if path:
+                        with open(path, "rb") as ff:
+                            b64 = base64.b64encode(ff.read()).decode()
+                if not b64:
                     continue
-                uid = str(uuid.uuid4())
                 if i == 0:
                     html = """<button onclick='document.getElementById("{uid}").play()'>play audio<audio controls id="{uid}" style="display: none"><source src="data:audio/mpeg;base64,{b64}"></audio></button>""".format(
                         b64=b64, uid=uid
@@ -415,120 +434,207 @@ class AnkiWindow(QWidget):
         with open(gobject.getconfig("anki_2/style.css"), "w", encoding="utf8") as ff:
             ff.write(model_css)
 
+    def createhotkeytab(self, baselay: QVBoxLayout):
+        ls = [
+            "_29",
+            "_30",
+            "_35",
+            "_33",
+            "playlastrecord",
+            "croprecord",
+            "recordwindow",
+        ]
+        makescrollgrid(
+            setTab_quick_lazy(gobject.base.settin_ui, ls, doc=False), baselay
+        )
+
     def creatsetdtab(self, baselay: QVBoxLayout):
-        wid = QWidget()
-        layout = VisLFormLayout(wid)
-        baselay.addWidget(wid)
-        layout.addRow(
-            "端口号", getspinbox(0, 65536, globalconfig["ankiconnect"], "port")
-        )
-        layout.addRow(
-            "ModelName", getlineedit(globalconfig["ankiconnect"], "ModelName6")
-        )
+        class zidongluyinw(PopupWidget):
 
-        layout.addRow(
-            "允许重复",
-            getsimpleswitch(globalconfig["ankiconnect"], "allowDuplicate"),
-        )
-        layout.addRow(
-            "添加时更新模板",
-            getsimpleswitch(globalconfig["ankiconnect"], "autoUpdateModel"),
-        )
-        layout.addRow(
-            "自定义Anki生成脚本",
-            getboxlayout(
-                [
-                    getsimpleswitch(globalconfig, "usecustomankigen"),
-                    getIconButton(
-                        callback=functools.partial(selectdebugfile, "myanki_v2.py"),
-                        icon="fa.edit",
+            def __init__(_self, parent):
+                super().__init__(parent)
+                form = LFormLayout(_self)
+                form.addRow(
+                    "Detection threshold",
+                    getspinbox(
+                        0,
+                        1,
+                        globalconfig,
+                        "vad_threshold",
+                        step=0.1,
+                        double=True,
+                        default=0.5,
+                        callback=self.refsearchw.safeloadrecorder,
                     ),
-                    0,
-                ]
-            ),
-        )
-        layout.addRow(
-            "截图后进行OCR",
-            getsimpleswitch(globalconfig["ankiconnect"], "ocrcroped"),
-        )
-        layout.addRow(
-            "自动录音",
-            getsimpleswitch(
-                globalconfig["ankiconnect"],
-                "autorecord",
-                callback=self.refsearchw.safeloadrecorder,
-            ),
-        )
+                )
+                form.addRow(
+                    "Minimum silence duration in seconds",
+                    getspinbox(
+                        0,
+                        2,
+                        globalconfig,
+                        "vad_min_silence_duration",
+                        step=0.1,
+                        double=True,
+                        default=0.5,
+                        callback=self.refsearchw.safeloadrecorder,
+                    ),
+                )
+                form.addRow(
+                    "Minimum speech duration in seconds",
+                    getspinbox(
+                        0,
+                        2,
+                        globalconfig,
+                        "vad_min_speech_duration",
+                        step=0.1,
+                        double=True,
+                        default=0.25,
+                        callback=self.refsearchw.safeloadrecorder,
+                    ),
+                )
+                _self.display()
 
-        layout.addRow(
-            "自动TTS",
-            getsimpleswitch(globalconfig["ankiconnect"], "autoruntts"),
-        )
-        layout.addRow(
-            "自动TTS_例句",
-            getsimpleswitch(globalconfig["ankiconnect"], "autoruntts2"),
-        )
-        layout.addRow(
-            "自动截图",
-            getsimpleswitch(globalconfig["ankiconnect"], "autocrop"),
-        )
-        layout.addRow(
-            "截图保存格式",
-            getsimplecombobox(
-                getimageformatlist(),
-                globalconfig,
-                "imageformat2",
-                static=True,
-                internal=getimageformatlist(),
-                default="webp",
-            ),
-        )
-        layout.addRow(
-            "例句中加粗单词",
-            getsimpleswitch(globalconfig["ankiconnect"], "boldword"),
-        )
-        layout.addRow(
-            "成功添加后关闭窗口",
-            getsimpleswitch(globalconfig["ankiconnect"], "addsuccautoclose"),
-        )
-        layout.addRow(
-            "成功添加后隐藏Anki页面",
-            getsimpleswitch(globalconfig["ankiconnect"], "addsuccautocloseEx"),
-        )
-        cnt = layout.rowCount() + 1
+        savelay: "list[VisGridLayout]" = []
 
         def __(xx):
             i = ["mp3", "opus"].index(xx)
-            layout.setRowVisible(cnt + 0, False)
-            layout.setRowVisible(cnt + 1, False)
-            layout.setRowVisible(cnt + i, True)
+            savelay[0].setRowVisible(len(grid) - 2, False)
+            savelay[0].setRowVisible(len(grid) - 1, False)
+            savelay[0].setRowVisible(len(grid) - 2 + i, True)
 
-        layout.addRow(
-            "音频编码",
-            getsimplecombobox(
-                ["mp3", "opus(ogg)"],
-                globalconfig,
-                "audioformat",
-                internal=["mp3", "opus"],
-                callback=__,
-                default="mp3",
-            ),
+        grid = [
+            [
+                "端口号",
+                getspinbox(0, 65536, globalconfig["ankiconnect"], "port", default=8765),
+            ],
+            [
+                "ModelName",
+                getlineedit(
+                    globalconfig["ankiconnect"], "ModelName6", default="modelofluna"
+                ),
+            ],
+            [
+                "允许重复",
+                getsimpleswitch(
+                    globalconfig["ankiconnect"], "allowDuplicate", default=True
+                ),
+            ],
+            [
+                "添加时更新模板",
+                getsimpleswitch(
+                    globalconfig["ankiconnect"], "autoUpdateModel", default=True
+                ),
+            ],
+            [
+                "自定义Anki生成脚本",
+                getboxlayout(
+                    [
+                        getsimpleswitch(
+                            globalconfig, "usecustomankigen", default=False
+                        ),
+                        getIconButton(
+                            callback=functools.partial(selectdebugfile, "myanki_v3.py"),
+                            icon="fa.edit",
+                        ),
+                        0,
+                    ]
+                ),
+            ],
+            [
+                "截图后进行OCR",
+                getsimpleswitch(
+                    globalconfig["ankiconnect"], "ocrcroped", default=False
+                ),
+            ],
+            [
+                "自动录音",
+                getboxlayout(
+                    [
+                        getsimpleswitch(
+                            globalconfig["ankiconnect"],
+                            "autorecord",
+                            callback=self.refsearchw.safeloadrecorder,
+                            default=False,
+                        ),
+                        getIconButton(callback=functools.partial(zidongluyinw, self)),
+                        0,
+                    ]
+                ),
+            ],
+            [
+                "自动TTS",
+                getsimpleswitch(
+                    globalconfig["ankiconnect"], "autoruntts", default=False
+                ),
+            ],
+            [
+                "自动TTS_例句",
+                getsimpleswitch(
+                    globalconfig["ankiconnect"], "autoruntts2", default=False
+                ),
+            ],
+            [
+                "自动截图",
+                getsimpleswitch(globalconfig["ankiconnect"], "autocrop", default=False),
+            ],
+            [
+                "截图保存格式",
+                getsimplecombobox(
+                    getimageformatlist(),
+                    globalconfig,
+                    "imageformat2",
+                    static=True,
+                    internal=getimageformatlist(),
+                    default="webp",
+                ),
+            ],
+            [
+                "例句中加粗单词",
+                getsimpleswitch(globalconfig["ankiconnect"], "boldword", default=False),
+            ],
+            [
+                "成功添加后关闭窗口",
+                getsimpleswitch(
+                    globalconfig["ankiconnect"], "addsuccautoclose", default=False
+                ),
+            ],
+            [
+                "成功添加后隐藏Anki页面",
+                getsimpleswitch(
+                    globalconfig["ankiconnect"], "addsuccautocloseEx", default=False
+                ),
+            ],
+            [
+                "音频编码",
+                getsimplecombobox(
+                    ["mp3", "opus(ogg)"],
+                    globalconfig,
+                    "audioformat",
+                    internal=["mp3", "opus"],
+                    callback=__,
+                    default="mp3",
+                ),
+            ],
+            [
+                "MP3 bitrate",
+                getsimplecombobox(
+                    [str(8 * i) for i in range(1, 320 // 8 + 1)],
+                    globalconfig,
+                    "mp3kbps",
+                    internal=[8 * i for i in range(1, 320 // 8 + 1)],
+                    default=64,
+                ),
+            ],
+            [
+                "OPUS bitrate",
+                getspinbox(6, 256, globalconfig, "opusbitrate", default=10),
+            ],
+        ]
+        makescrollgrid(
+            grid, baselay, hiderows=[len(grid) - 2, len(grid) - 1], savelay=savelay
         )
 
-        layout.addRow(
-            "MP3 bitrate",
-            getsimplecombobox(
-                [str(8 * i) for i in range(1, 320 // 8 + 1)],
-                globalconfig,
-                "mp3kbps",
-                internal=[8 * i for i in range(1, 320 // 8 + 1)],
-                default=64,
-            ),
-        )
-        layout.addRow(
-            "OPUS bitrate",
-            getspinbox(6, 256, globalconfig, "opusbitrate", default=10),
-        )
         __(globalconfig.get("audioformat", "mp3"))
 
     @threader
@@ -575,6 +681,55 @@ class AnkiWindow(QWidget):
             self.recorders[ii] = None
             self.settextsignal.emit(target, file)
 
+    @threader
+    def recordvediocallback(self, rect=None, *_):
+        try:
+            self.recording = True
+            self.insertvedio.setIconStr("fa.stop")
+            avif, mp3 = ffmpeg_record(self.recordsema, rect, split=True)
+        except Exception as e:
+            gobject.base.safeinvokefunction.emit(
+                functools.partial(RichMessageBox, self, _TR("错误"), str(e))
+            )
+            self.recording = False
+            self.insertvedio.setIconStr("fa.film")
+            return
+        self.recording = False
+        self.insertvedio.setIconStr("fa.film")
+        self.settextsignal.emit(self.editpath, avif)
+        self.settextsignal.emit(self.audiopath_sentence, mp3)
+
+    def Videoselect(self):
+        if self.recording:
+            self.recordsema.release()
+            self.recording = False
+            self.insertvedio.setIconStr("fa.film")
+            return
+        menu = QMenu(self)
+        crop2 = LAction("区域录制", menu)
+        crophwnd = LAction("窗口录制", menu)
+        crop2.setIcon(qtawesome.icon("fa.crop"))
+        crophwnd.setIcon(qtawesome.icon("fa.camera"))
+        menu.addAction(crop2)
+        menu.addAction(crophwnd)
+        action = menu.exec(QCursor.pos())
+        if action == crop2:
+            rangeselct_function(self.recordvediocallback, self.window())
+        elif action == crophwnd:
+            self.recordvediocallback()
+
+    @threader
+    def recordvediohotkeycallback(self, crop):
+        if self.recording:
+            self.recordsema.release()
+            self.recording = False
+            self.insertvedio.setIconStr("fa.film")
+            return
+        if crop:
+            rangeselct_function(self.recordvediocallback, self.window())
+        else:
+            self.recordvediocallback()
+
     def createaddtab(self):
         self.recorders: "dict[int, loopbackrecorder]" = {}
         wid = QWidget()
@@ -599,6 +754,13 @@ class AnkiWindow(QWidget):
                 )
             ),
             tips="窗口截图",
+        )
+        self.recordsema = threading.Semaphore(0)
+        self.recording = False
+        self.insertvedio = getIconButton(
+            icon="fa.film",
+            callback=self.Videoselect,
+            tips="插入视频",
         )
 
         def createtbn(target: QLineEdit):
@@ -635,7 +797,9 @@ class AnkiWindow(QWidget):
         self.editpath = pasteimageEdit()
         self.editpath.setReadOnly(True)
         self.viewimagelabel = pixmapviewer()
-        self.editpath.textChanged.connect(self.wrappedpixmap)
+        self.editpath.textChanged.connect(
+            lambda src: self.viewimagelabel.showpixmap(QPixmap(src))
+        )
         self.example = ctrlbedit()
         self.zhuyinedit = ctrlbedit()
         self.wordedit = FQLineEdit()
@@ -648,13 +812,19 @@ class AnkiWindow(QWidget):
         self.example.textChanged.connect(__)
         self.remarks = ctrlbedit()
         recordbtn1 = IconButton(
-            icon=["fa.microphone", "fa.stop"], checkable=True, tips="录音"
+            icon=["fa.microphone", "fa.stop"],
+            checkable=True,
+            tips="录音",
+            checkablechangecolor=False,
         )
         recordbtn1.clicked.connect(
             functools.partial(self.startorendrecord, recordbtn1, 1, self.audiopath)
         )
         recordbtn2 = IconButton(
-            icon=["fa.microphone", "fa.stop"], checkable=True, tips="录音"
+            icon=["fa.microphone", "fa.stop"],
+            checkable=True,
+            tips="录音",
+            checkablechangecolor=False,
         )
         recordbtn2.clicked.connect(
             functools.partial(
@@ -668,6 +838,7 @@ class AnkiWindow(QWidget):
             globalconfig["ankiconnect"]["DeckNameS"],
             globalconfig["ankiconnect"],
             "DeckName_i",
+            default=0,
         )
 
         def refreshcombo(combo: QComboBox, changed):
@@ -772,6 +943,7 @@ class AnkiWindow(QWidget):
                                     self.editpath,
                                     cropbutton2,
                                     grabwindowbtn,
+                                    self.insertvedio,
                                     folder_open3,
                                     functools.partial(createtbn, self.editpath),
                                 ]
@@ -799,15 +971,10 @@ class AnkiWindow(QWidget):
         img.save(fname)
         self.editpath.setText(fname)
 
-    def wrappedpixmap(self, src):
-        if os.path.exists(src) == False:
-            pix = QPixmap()
-        else:
-            pix = QPixmap.fromImage(QImage(src))
-        self.viewimagelabel.showpixmap(pix)
-
     def selecfile2(self, item: QLineEdit):
-        f = QFileDialog.getOpenFileName(filter=getimagefilefilter() + ";;*")
+        f = QFileDialog.getOpenFileName(
+            filter=getimagefilefilter() + " *.avif *.gif;;*"
+        )
         res = f[0]
         if res != "":
             item.setText(res)
@@ -845,8 +1012,8 @@ class AnkiWindow(QWidget):
 
     def errorwrap(self, close=False):
         try:
-            anki.global_port = globalconfig["ankiconnect"]["port"]
-            anki.global_host = globalconfig["ankiconnect"]["host"]
+            anki.global_port = globalconfig["ankiconnect"].get("port", 8765)
+            anki.global_host = globalconfig["ankiconnect"].get("host", "127.0.0.1")
             if self.currentword == self.lastankiword:
                 response = QMessageBox.question(
                     self, _TR("警告"), _TR("检测到存在重复，是否覆盖？")
@@ -858,9 +1025,12 @@ class AnkiWindow(QWidget):
                 else:
                     return
             self.addanki()
-            if globalconfig["ankiconnect"]["addsuccautocloseEx"] and self.isVisible():
+            if (
+                globalconfig["ankiconnect"].get("addsuccautocloseEx", False)
+                and self.isVisible()
+            ):
                 self.refsearchw.ankiconnect.click()
-            if close or globalconfig["ankiconnect"]["addsuccautoclose"]:
+            if close or globalconfig["ankiconnect"].get("addsuccautoclose", False):
                 self.window().close()
             QToolTip.showText(QCursor.pos(), _TR("添加成功"), self)
         except requests.exceptions.RequestException:
@@ -876,6 +1046,7 @@ class AnkiWindow(QWidget):
             )
             RichMessageBox(self, _TR("错误"), t)
         except anki.AnkiException as e:
+            print_exc()
             QMessageBox.critical(self, _TR("错误"), str(e))
         except:
             print_exc()
@@ -911,14 +1082,14 @@ class AnkiWindow(QWidget):
 
     def addanki(self):
 
-        autoUpdateModel = globalconfig["ankiconnect"]["autoUpdateModel"]
-        allowDuplicate = globalconfig["ankiconnect"]["allowDuplicate"]
-        anki.global_port = globalconfig["ankiconnect"]["port"]
-        anki.global_host = globalconfig["ankiconnect"]["host"]
-        ModelName = globalconfig["ankiconnect"]["ModelName6"]
+        autoUpdateModel = globalconfig["ankiconnect"].get("autoUpdateModel", True)
+        allowDuplicate = globalconfig["ankiconnect"].get("allowDuplicate", True)
+        anki.global_port = globalconfig["ankiconnect"].get("port", 8765)
+        anki.global_host = globalconfig["ankiconnect"].get("host", "127.0.0.1")
+        ModelName = globalconfig["ankiconnect"].get("ModelName6", "modelofluna")
         try:
             DeckName = globalconfig["ankiconnect"]["DeckNameS"][
-                globalconfig["ankiconnect"]["DeckName_i"]
+                globalconfig["ankiconnect"].get("DeckName_i", 0)
             ]
         except:
             DeckName = "lunadeck"
@@ -926,9 +1097,9 @@ class AnkiWindow(QWidget):
         tags = globalconfig["ankiconnect"]["tags"]
         anki.Deck.create(DeckName)
         fields = static_data["model_fileds"]
-        if globalconfig["usecustomankigen"]:
+        if globalconfig.get("usecustomankigen", False):
             module = checkmd5reloadmodule(
-                gobject.getconfig("myanki_v2.py"), "myanki_v2"
+                gobject.getconfig("myanki_v3.py"), "myanki_v3"
             )
             if module:
                 try:
@@ -961,55 +1132,57 @@ class AnkiWindow(QWidget):
                         }
                     }
                 )
-        text_fields, audios, pictures = self.getfieldsdataall()
+        text_fields, medias = self.getfieldsdataall()
         self.lastankid = anki.Note.add(
-            DeckName, ModelName, text_fields, allowDuplicate, tags, audios, pictures
+            DeckName,
+            ModelName,
+            text_fields,
+            allowDuplicate,
+            tags,
+            medias,
         )
         self.lastankiword = self.currentword
 
     def getfieldsdataall(self):
         text_fields = self.loadfileds()
-        audios, pictures = self.loadankilikemediafield()
-        return self.custompass(text_fields, audios, pictures)
+        medias = self.loadankilikemediafield()
+        return self.custompass(text_fields, medias)
 
     def loadankilikemediafield(self):
-        media = []
-        for k, _ in [
-            ("audio_for_word", self.audiopath.text()),
-            ("audio_for_example_sentence", self.audiopath_sentence.text()),
-            ("screenshot", self.editpath.text()),
-        ]:
+        medias = defaultdict(list)
+        for i, (k, _) in enumerate(
+            [
+                ("audio_for_word", self.audiopath.text()),
+                ("audio_for_example_sentence", self.audiopath_sentence.text()),
+                ("screenshot", self.editpath.text()),
+            ]
+        ):
             if len(_):
-                with open(_, "rb") as ff:
-                    b64 = base64.b64encode(ff.read()).decode()
-                media.append(
-                    [
-                        {
-                            "data": b64,
-                            "filename": str(uuid.uuid4()) + os.path.splitext(_)[1],
-                            "fields": [k],
-                        }
-                    ]
-                )
-            else:
-                media.append([])
-        audios = media[0] + media[1]
-        pictures = media[2]
-        return audios, pictures
+                if i in (0, 1):
+                    kk = "audio"
+                else:
+                    kk = "picture"
 
-    def custompass(self, text_fields: dict, audios: list, pictures: list):
-        if globalconfig["usecustomankigen"]:
+                medias[kk].append(
+                    {
+                        "path": _,
+                        "filename": str(uuid.uuid4()) + os.path.splitext(_)[1],
+                        "fields": [k],
+                    }
+                )
+        return medias
+
+    def custompass(self, text_fields: dict, medias: "dict[str, list]"):
+        if globalconfig.get("usecustomankigen", False):
             module = checkmd5reloadmodule(
-                gobject.getconfig("myanki_v2.py"), "myanki_v2"
+                gobject.getconfig("myanki_v3.py"), "myanki_v3"
             )
             if module:
                 try:
-                    text_fields, audios, pictures = module.ParseFieldsData(
-                        text_fields, audios, pictures
-                    )
+                    text_fields, medias = module.ParseFieldsData(text_fields, medias)
                 except:
                     print_exc()
-        return text_fields, audios, pictures
+        return text_fields, medias
 
 
 class CustomTabBar(LTabBar):
@@ -1084,9 +1257,7 @@ class DynamicTreeModel(QStandardItemModel):
     def onDoubleClicked(self, index: QModelIndex):
         if not self.data(index, isWordNode):
             return
-        gobject.base.searchwordW.search_word.emit(
-            self.itemFromIndex(index).text(), None, False
-        )
+        gobject.base.searchwordW.search_word.emit(self.itemFromIndex(index).text())
 
 
 class kpQTreeView(QTreeView):
@@ -1104,16 +1275,18 @@ class HistoryViewer(QListView):
     IndexRole = Qt.ItemDataRole.UserRole + 101
 
     def showmenu(self, _):
-        idx = self.indexAt(_)
-        if not idx.isValid():
+        indexs = self.selectionModel().selectedIndexes()
+        if not indexs:
             return
-        item = self.model_.itemFromIndex(idx)
         menu = QMenu(self)
         delete = LAction("删除", menu)
         label = LAction("收藏", menu)
         daochu = LAction("导出", menu)
         label.setCheckable(True)
-        label.setChecked(item.text() in globalconfig["wordlabel2"])
+        items = [self.model_.itemFromIndex(index) for index in indexs]
+        label.setChecked(
+            all(item.text() in globalconfig["wordlabel2"] for item in items)
+        )
         if self.historshoucangjia == 0:
             menu.addAction(delete)
         menu.addAction(label)
@@ -1121,7 +1294,7 @@ class HistoryViewer(QListView):
             menu.addAction(daochu)
         action = menu.exec(QCursor.pos())
         if action == delete:
-            self.deleteindex(idx)
+            self.deleteindex(indexs)
         elif action == daochu:
             text = ""
             maybehassentence = OrderedDict()
@@ -1146,45 +1319,63 @@ class HistoryViewer(QListView):
                 ff.write("<ul>{}</ul>".format(text))
 
         elif action == label:
-            if label.isChecked():
-                if self.historshoucangjia == 0:
-                    item.setData(
-                        QBrush(Qt.GlobalColor.cyan), Qt.ItemDataRole.BackgroundRole
-                    )
+            for item in items:
+                if label.isChecked():
+                    if self.historshoucangjia == 0:
+                        item.setData(
+                            QBrush(Qt.GlobalColor.cyan), Qt.ItemDataRole.BackgroundRole
+                        )
+                    else:
+                        item.setData(None, Qt.ItemDataRole.BackgroundRole)
+                    globalconfig["wordlabel2"].append(item.text())
+
                 else:
-                    item.setData(None, Qt.ItemDataRole.BackgroundRole)
-                globalconfig["wordlabel2"].append(item.text())
+                    if self.historshoucangjia == 0:
+                        item.setData(None, Qt.ItemDataRole.BackgroundRole)
+                    else:
+                        item.setData(
+                            QBrush(Qt.GlobalColor.gray), Qt.ItemDataRole.BackgroundRole
+                        )
 
-            else:
-                if self.historshoucangjia == 0:
-                    item.setData(None, Qt.ItemDataRole.BackgroundRole)
-                else:
-                    item.setData(
-                        QBrush(Qt.GlobalColor.gray), Qt.ItemDataRole.BackgroundRole
-                    )
+                    try:
+                        globalconfig["wordlabel2"].remove(item.text())
+                    except:
+                        pass
 
-                try:
-                    globalconfig["wordlabel2"].remove(item.text())
-                except:
-                    pass
+    def deleteindex(self, indexs: "list[QModelIndex]"):
+        if not indexs:
+            return
 
-    def deleteindex(self, index: QModelIndex):
-        if index.isValid():
-            item = self.model_.itemFromIndex(index)
-            id_ = item.data(self.IndexRole)
-            self.model_.removeRow(index.row())
-            gobject.base.somedatabase.removewhich(id_)
+        rows_to_delete = sorted([idx.row() for idx in indexs if idx.isValid()])
+        if not rows_to_delete:
+            return
+        first_row = rows_to_delete[0]
+        new_focus_row = first_row
+        if first_row >= self.model_.rowCount() - len(rows_to_delete):
+            new_focus_row = max(0, first_row - 1)
+
+        for row in sorted(rows_to_delete, reverse=True):
+            item = self.model_.item(row)
+            if item:
+                id_ = item.data(self.IndexRole)
+                self.model_.removeRow(row)
+                gobject.base.somedatabase.removewhich(id_)
+
+        new_index = self.model_.index(new_focus_row, 0)
+        if new_index.isValid():
+            self.setCurrentIndex(new_index)
 
     def keyPressEvent(self, e: QKeyEvent):
         if (e.key() == Qt.Key.Key_Delete) and (self.historshoucangjia == 0):
-            index = self.currentIndex()
-            self.deleteindex(index)
+            indexs = self.selectionModel().selectedIndexes()
+            self.deleteindex(indexs)
         return super().keyPressEvent(e)
 
     def __init__(self, parent: "searchwordW"):
         super(HistoryViewer, self).__init__(parent)
         self.historshoucangjia = 0
         self.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self.model_ = QStandardItemModel(self)
         self.setModel(self.model_)
         self.doubleClicked.connect(self.selectwhich)
@@ -1411,7 +1602,12 @@ class WordViewer(QWidget):
         return self.__curr_word
 
     def searchword(
-        self, word: str, sentence: str = None, readydata: dict = None, unuse=None
+        self,
+        word: str,
+        sentence: str = None,
+        readydata: dict = None,
+        unuse=None,
+        checklangs=False,
     ):
         word = word.strip()
         self.__curr_word = word
@@ -1435,7 +1631,14 @@ class WordViewer(QWidget):
             if unuse:
                 if k in unuse:
                     continue
-            gobject.base.cishus[k].safesearch(
+            _cishu = gobject.base.cishus[k]
+            if checklangs and not _cishu.is_src_auto:
+                _langs = _cishu.support_langs
+                if _langs and _cishu.srclang_1.code not in _langs:
+                    self.thisps.pop(k, None)
+                    self.bad_result.add(k)
+                    continue
+            _cishu.safesearch(
                 functools.partial(self.__show_dict_result.emit, current, k),
                 word,
                 sentence,
@@ -1567,20 +1770,20 @@ class WordViewer(QWidget):
 
             return [
                 MenuItem(
-                    text=_TR("查词"),
+                    text="查词",
                     clicked=functools.partial(
                         self.from_webview_search_word.emit, selectedtext.strip()
                     ),
                 ),
                 MenuItem(
-                    text=_TR("在新窗口中查词"),
+                    text="在新窗口中查词",
                     clicked=lambda: threader(
                         self.from_webview_search_word_in_new_window.emit
                     )(selectedtext.strip()),
                 ),
                 (
                     MenuItem(
-                        text=_TR("在浏览器中查词"),
+                        text="在浏览器中查词",
                         clicked=lambda: os.startfile(
                             gobject.base.cishus.get(
                                 self.tabks[self.tab.currentIndex()]
@@ -1591,27 +1794,27 @@ class WordViewer(QWidget):
                     else None
                 ),
                 MenuItem(
-                    text=_TR("翻译"),
+                    text="翻译",
                     clicked=functools.partial(gobject.base.textgetmethod, selectedtext),
                 ),
                 MenuItem(
-                    text=_TR("朗读"),
+                    text="朗读",
                     clicked=functools.partial(gobject.base.read_text, selectedtext),
                 ),
                 MenuItem(
-                    text=_TR("加亮"),
+                    text="加亮",
                     clicked=lambda: self.textOutput.eval("highlightSelection()"),
                 ),
             ]
         else:
             return [
                 MenuItem(
-                    text=_TR("加亮模式"),
+                    text="加亮模式",
                     clicked=self.switch_hightlightmode,
                     checkable=True,
                     checked=self.ishightlight,
                 ),
-                MenuItem(text=_TR("清除加亮"), clicked=self.clear_hightlight),
+                MenuItem(text="清除加亮", clicked=self.clear_hightlight),
             ]
 
     def __init__(self, parent=None, tabonehide=False, transp=False):
@@ -1798,39 +2001,87 @@ playAudioList("""
 
 
 class searchwordW(closeashidewindow):
-    search_word = pyqtSignal(str, str, bool)
+    search_word = pyqtSignal(object)
     search_word_in_new_window = pyqtSignal(str)
     ocr_once_signal = pyqtSignal()
 
     def __init__(self, parent):
-        super(searchwordW, self).__init__(parent, globalconfig["sw_geo"])
-        self.search_word.connect(self._click_word_search_function)
+        super(searchwordW, self).__init__(
+            parent,
+            posinit=globalconfig.get(
+                "sw_geo", create_centered_rect(500, 500).getRect()
+            ),
+            possave=functools.partial(globalconfig.__setitem__, "sw_geo"),
+        )
+        # 必须排队连接：首次查词会触发setupUi（内含WebView2创建的嵌套消息泵），
+        # 不能让它在菜单点击/COM事件回调的栈上同步执行
+        self.search_word.connect(
+            self.__search_word, Qt.ConnectionType.QueuedConnection
+        )
         self.search_word_in_new_window.connect(self.searchwinnewwindow)
         self.ocr_once_signal.connect(lambda: rangeselct_function(self.ocr_do_function))
         self.__state = 0
         self.safeloadrecorder()
 
+    def __search_word(self, d: "str|dict[str, object]"):
+        if isinstance(d, str):
+            return self._click_word_search_function(d)
+        self._click_word_search_function(
+            word=d["word"],
+            sentence=d.get("sentence", None),
+            append=d.get("append", False),
+            readydata=d.get("readydata", None),
+            checklangs=d.get("checklangs", False),
+        )
+
     @threader
     def safeloadrecorder(self, _=None):
         self.autorecorder = None
-        if not globalconfig["ankiconnect"]["autorecord"]:
+        if not globalconfig["ankiconnect"].get("autorecord", False):
             return
         try:
-            self.autorecorder = NativeUtils.record_with_vad()
+            self.autorecorder = LunaSubProcess.vad(
+                globalconfig.get("vad_threshold", 0.5),
+                globalconfig.get("vad_min_silence_duration", 0.5),
+                globalconfig.get("vad_min_speech_duration", 0.25),
+            )
+        except LookupError as e:
+            dlldir, model = e.args[0]
+            links = []
+            if not dlldir:
+                links.append(
+                    [
+                        "sherpa-onnx-cxx-api.dll",
+                        "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.6/sherpa-onnx-v1.13.6-win-x64-shared-MD-Release.tar.bz2",
+                    ]
+                )
+            if not model:
+                links.append(
+                    [
+                        "silero_vad.onnx",
+                        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx",
+                    ]
+                )
+            t = _TR("找不到依赖文件。请下载后解压到软件目录中\n{}").format(
+                "\n".join(['<a href="{}">{}</a>'.format(_[1], _[0]) for _ in links]),
+            )
+            gobject.base.safeinvokefunction.emit(
+                lambda: RichMessageBox(self, _TR("自动录音"), t)
+            )
         except:
-            self.autorecorder = None
+            print_exc()
 
     @threader
     def ocr_do_function(self, rect, img=None):
         if not img:
-            img = imageCut(0, rect[0][0], rect[0][1], rect[1][0], rect[1][1])
+            img = imageCut(0, rect)
         result = ocr_run(img)
         if globalconfig.get("debugocr", False):
             return
         if result.error:
             return result.displayerror()
         gobject.base.ocr_search_word_save_image.emit(img)
-        self.search_word.emit(result.textonly, None, False)
+        self.search_word.emit(result.textonly)
 
     def __load(self):
         if self.__state != 0:
@@ -1861,7 +2112,7 @@ class searchwordW(closeashidewindow):
             _ = searchwordW(gobject.base.searchwordW.parent())
             self.cachenewwindow.append(_)
         _.move(_.pos() + QPoint(20, 20))
-        _.search_word.emit(word, None, False)
+        _.search_word.emit(word)
 
     def _createnewwindowsearch(self, *_):
         word = self.searchtext.text()
@@ -1872,7 +2123,7 @@ class searchwordW(closeashidewindow):
         menu = QMenu(self)
         auto = LAction("自动", menu)
         auto.setCheckable(True)
-        auto.setChecked(globalconfig["is_search_word_auto_tts"])
+        auto.setChecked(globalconfig.get("is_search_word_auto_tts", False))
         menu.addAction(auto)
         action = menu.exec(QCursor.pos())
         if action == auto:
@@ -1949,8 +2200,12 @@ class searchwordW(closeashidewindow):
         self.searchtext = FQLineEdit()
         self.searchtext.textChanged.connect(self.ankiwindow.maybereset)
 
-        dictbutton = IconButton(icon="fa.book", checkable=True, tips="MDict")
-        dictbutton.clicked.connect(self.onceaddshowdictwidget)
+        dictbutton = getIconSwitch(
+            icon="fa.book",
+            default=False,
+            tips="MDict",
+            callback=self.onceaddshowdictwidget,
+        )
         history_btn = IconButton(icon="fa.history")
         history_btn.clicked.connect(self.historymenu)
 
@@ -1978,23 +2233,21 @@ class searchwordW(closeashidewindow):
         )
         self.searchlayout.addWidget(self.soundbutton)
 
-        ankiconnect = IconButton(icon="fa.adn", checkable=True, tips="Anki")
-        ankiconnect.clicked.connect(self.onceaddankiwindow)
-        ankiconnect.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        ankiconnect.customContextMenuRequested.connect(
+        self.ankiconnect = getIconSwitch(
+            icon="fa.adn", default=False, tips="Anki", callback=self.onceaddankiwindow
+        )
+        self.ankiconnect.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.ankiconnect.customContextMenuRequested.connect(
             lambda _: self.ankiwindow.errorwrap()
         )
-        self.ankiconnect = ankiconnect
-        self.searchlayout.addWidget(ankiconnect)
+        self.searchlayout.addWidget(self.ankiconnect)
 
         self.setCentralWidget(ww)
 
         self.spliter = QSplitter()
 
         self.wordviewer = WordViewer()
-        self.wordviewer.from_webview_search_word.connect(
-            lambda _1: self.search_word.emit(_1, None, False)
-        )
+        self.wordviewer.from_webview_search_word.connect(self.search_word.emit)
         self.wordviewer.from_webview_search_word_in_new_window.connect(
             self.search_word_in_new_window
         )
@@ -2015,7 +2268,7 @@ class searchwordW(closeashidewindow):
         def __(_):
             globalconfig["ankisplit"] = self.spliter.sizes()
 
-        self.spliter.setSizes(globalconfig["ankisplit"])
+        self.spliter.setSizes(globalconfig.get("ankisplit", [400, 400]))
         self.spliter.splitterMoved.connect(__)
         self.spliter.setStretchFactor(0, 1)
         self.spliter.setStretchFactor(1, 0)
@@ -2075,7 +2328,9 @@ class searchwordW(closeashidewindow):
             def __(_):
                 globalconfig["mdictsplit"] = self.dict_textoutput_spl.sizes()
 
-            self.dict_textoutput_spl.setSizes(globalconfig["mdictsplit"])
+            self.dict_textoutput_spl.setSizes(
+                globalconfig.get("mdictsplit", [400, 400])
+            )
             self.dict_textoutput_spl.splitterMoved.connect(__)
         self.isfirstshowleftwidgets = False
 
@@ -2119,29 +2374,46 @@ class searchwordW(closeashidewindow):
         else:
             self.ankiwindow.hide()
 
-    def _click_word_search_function(self, word: str, sentence, append, readydata=None):
+    def _click_word_search_function(
+        self, word: str, sentence=None, append=False, readydata=None, checklangs=False
+    ):
         self.showNormal()
         if self.__state != 2:
             return
         word = word.strip()
         if append:
             word = self.searchtext.text() + word
-        self.search_function(word, sentence, append, readydata=readydata)
+        self.search_function(
+            word, sentence, append, readydata=readydata, checklangs=checklangs
+        )
 
     def search_function(
-        self, word: str, sentence, append, readydata=None, isfromhist=False
+        self,
+        word: str,
+        sentence,
+        append,
+        readydata=None,
+        isfromhist=False,
+        checklangs=False,
     ):
         self.searchtext.setText(word)
         self.activate()
-        self.search(word, sentence, append, readydata, isfromhist=isfromhist)
+        self.search(
+            word,
+            sentence,
+            append,
+            readydata,
+            isfromhist=isfromhist,
+            checklangs=checklangs,
+        )
         self.ankiwindow.example.setPlainText(
             sentence if sentence else gobject.base.currenttext
         )
-        if globalconfig["ankiconnect"]["autoruntts"]:
+        if globalconfig["ankiconnect"].get("autoruntts", False):
             self.ankiwindow.langdu()
-        if globalconfig["ankiconnect"]["autoruntts2"]:
+        if globalconfig["ankiconnect"].get("autoruntts2", False):
             self.ankiwindow.langdu2()
-        if globalconfig["ankiconnect"]["autorecord"] and self.autorecorder:
+        if globalconfig["ankiconnect"].get("autorecord", False) and self.autorecorder:
             data = self.autorecorder.get()
             if data:
                 self.ankiwindow.audiopath_sentence.sig = uuid.uuid4()
@@ -2151,7 +2423,7 @@ class searchwordW(closeashidewindow):
                     TTSResult(data),
                 )
         self.ankiwindow.remarks.setPlainText(gobject.base.currenttranslate)
-        if globalconfig["ankiconnect"]["autocrop"]:
+        if globalconfig["ankiconnect"].get("autocrop", False):
             grabwindow(
                 callback=functools.partial(
                     sc_callback,
@@ -2177,12 +2449,15 @@ class searchwordW(closeashidewindow):
         append=False,
         readydata=None,
         isfromhist=False,
+        checklangs=False,
     ):
         word = word.strip()
         if not word:
             return
         self.__parsehistory(word, append, sentence, isfromhist)
-        if globalconfig["is_search_word_auto_tts"]:
+        if globalconfig.get("is_search_word_auto_tts", False):
             gobject.base.read_text(self.searchtext.text())
         self.ankiwindow.maybereset(word)
-        self.wordviewer.searchword(word, sentence, readydata=readydata)
+        self.wordviewer.searchword(
+            word, sentence, readydata=readydata, checklangs=checklangs
+        )

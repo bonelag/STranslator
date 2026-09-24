@@ -222,7 +222,7 @@
 #include "engine32/ACTGS.h"
 #include "engine32/e_Erekiteru.h"
 #include "NoEngine.h"
-#include "engines/mono/mono.h"
+#include "engines/unity/unity.h"
 #include "engines/lua/lua51.h"
 #include "engines/python/Renpy.h"
 #include "emulators/ppsspp.h"
@@ -234,7 +234,7 @@ std::vector<ENGINE *> check_engines()
         new VanillawareGC,
         new V8,
         new cef,
-        new mono,
+        new Unity,
         new sakanagl,
         new PONScripter,
         new Patisserie,

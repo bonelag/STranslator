@@ -15,7 +15,6 @@
     "multihookmergeby": "\n",
     "disappear_delay": 5,
     "network": 1,
-    "useextrahtml": false,
     "foldstatus": {
         "ocr": {
             "other": false
@@ -40,11 +39,7 @@
             "special": false
         }
     },
-    "usecustomankigen": false,
-    "is_search_word_auto_tts": false,
-    "is_search_word_auto_tts_2": false,
     "network_websocket": 1,
-    "imagewrapmode": 0,
     "rendertext_using_internal": {
         "webview": "yinying",
         "textbrowser": "miaobian1"
@@ -131,7 +126,6 @@
                     "fillcolor": "#eeeeee",
                     "width_rate": 0.25,
                     "width": 0,
-                    "trace": 0,
                     "reverse": true
                 },
                 "argstype": {
@@ -155,12 +149,6 @@
                         "min": 0,
                         "max": 10,
                         "step": 0.01
-                    },
-                    "trace": {
-                        "name": "投影距离",
-                        "type": "spin",
-                        "min": 0,
-                        "max": 100
                     }
                 }
             },
@@ -249,8 +237,6 @@
             "target": "steamid"
         }
     },
-    "networktcpport": 2333,
-    "networktcpenable": false,
     "network_service_disabled_paths": [],
     "textoutputer": {
         "clipboard": {
@@ -260,30 +246,11 @@
         },
         "websocket": {}
     },
-    "embedded": {
-        "timeout_translate": 2,
-        "trans_kanji": false,
-        "displaymode": 0,
-        "insertspace_policy": 0,
-        "changefont": false,
-        "changefont_font": "",
-        "changecharset": false,
-        "changecharset_charset": 2,
-        "limittextlength_use": false,
-        "limittextlength_length": 40,
-        "clearText": false,
-        "changefontsize": 1.0,
-        "changefontsize_use": false
-    },
+    "embedded": {},
     "requestinterval": 0,
-    "keepontop": true,
-    "buttonsize": 25,
-    "buttonsize2": 18,
-    "language_setted_2.4.5": false,
     "postprocess_rank": [
         "fulltohalf"
     ],
-    "fix_translate_rank": false,
     "fix_translate_rank_rank": [],
     "cishuvisrank": [],
     "ignoredict": [],
@@ -297,89 +264,6 @@
         "arabic_reshaper": false,
         "skiponlypunctuations": true
     },
-    "showintab": true,
-    "showintab_sub": true,
-    "remove_useless_hook": false,
-    "button_color_normal": "#FFFFFF",
-    "textthreaddelay": 500,
-    "maxBufferSize": 3000,
-    "maxHistorySize": 1000000,
-    "yuanjiao_r": 0,
-    "yuanjiao_sys": false,
-    "extensionsetting": [
-        500,
-        500,
-        800,
-        800
-    ],
-    "transuigeo": [
-        500,
-        500,
-        800,
-        200
-    ],
-    "geo_extrahtml": [
-        100,
-        100,
-        600,
-        300
-    ],
-    "hist_geo": [
-        100,
-        100,
-        600,
-        300
-    ],
-    "edit_geo": [
-        100,
-        100,
-        600,
-        300
-    ],
-    "showocrgeo": [
-        100,
-        100,
-        600,
-        300
-    ],
-    "attachprocessgeo": [
-        100,
-        100,
-        800,
-        400
-    ],
-    "selecthookgeo": [
-        100,
-        100,
-        800,
-        600
-    ],
-    "memorydialoggeo": [
-        100,
-        100,
-        800,
-        600
-    ],
-    "savegamedialoggeo": [
-        100,
-        100,
-        800,
-        600
-    ],
-    "sw_geo": [
-        100,
-        100,
-        500,
-        500
-    ],
-    "codepage_value": 932,
-    "currvislistuid": null,
-    "multiregion": false,
-    "ocrregions": [],
-    "ocr_stable_sim_v2": 0.5,
-    "ocr_stable_sim2_v2": 0.95,
-    "ocr_diff_sim_v2": 0.95,
-    "ocr_text_diff": 3,
     "lineheights": {
         "lineHeight": 1,
         "lineHeightNormal": true,
@@ -392,78 +276,14 @@
         "marginTop": 0,
         "marginBottom": 0
     },
-    "fonttype": "",
-    "fonttype2": "",
-    "rawtextcolor": "#000000",
-    "backcolor": "#ffaaff",
-    "backcolor_tool": "#ffaaff",
-    "jiamingcolor": "black",
     "ankiconnect": {
-        "host": "127.0.0.1",
-        "port": 8765,
-        "DeckName_i": 0,
         "DeckNameS": [
             "lunadeck"
         ],
-        "ModelName6": "modelofluna",
-        "autoUpdateModel": true,
-        "ocrcroped": false,
-        "autoruntts": false,
-        "autoruntts2": false,
-        "autocrop": false,
-        "addsuccautoclose": false,
-        "addsuccautocloseEx": false,
-        "boldword": false,
-        "tags": [],
-        "allowDuplicate": true,
-        "autorecord": false
+        "tags": []
     },
-    "setting_geo_2": [
-        100,
-        100,
-        1000,
-        600
-    ],
     "global_namemap2": [],
-    "buttoncolor": "#2e2eff",
-    "buttoncolor_1": "#ff03f2",
-    "ocrrangecolor": "#000000",
     "tagNameRemap": {},
-    "dialog_savegame_layout": {
-        "layout": "updown",
-        "textColor": "#000000",
-        "textbackColor": "#ffffffff",
-        "borderColor": "#10000000",
-        "borderColor2": "#ff000000",
-        "borderW": 1,
-        "itemw": 130,
-        "itemh": 190,
-        "margin": 6,
-        "margin2": 6,
-        "radius": 10,
-        "radius2": 10,
-        "textH2": 1,
-        "backcolor2": "#40ffffff",
-        "onselectcolor2": "#40007fff",
-        "onfilenoexistscolor2": "#40acacac",
-        "backcolor3": "#40ffffff",
-        "onselectcolor3": "#40007fff",
-        "onfilenoexistscolor3": "#40acacac",
-        "listitemheight": 30,
-        "listitemwidth_2": [
-            300,
-            500
-        ]
-    },
-    "ankisplit": [
-        400,
-        400
-    ],
-    "mdictsplit": [
-        400,
-        400
-    ],
-    "hovercolor": "#80000000",
     "toolbutton": {
         "rank2": [
             "luna",
@@ -894,6 +714,9 @@
             "50": {
                 "name": "立即保存配置"
             },
+            "giveupfocus": {
+                "name": "放弃窗口焦点"
+            },
             "_15": {
                 "name": "绑定窗口_（点击自己取消）"
             },
@@ -913,10 +736,10 @@
                 "name": "游戏暂停"
             },
             "41": {
-                "name": "Magpie_缩放"
+                "name": "窗口缩放_全屏模式缩放"
             },
             "42": {
-                "name": "Magpie_窗口化缩放"
+                "name": "窗口缩放_窗口模式缩放"
             },
             "_26": {
                 "name": "进行一次OCR"
@@ -940,10 +763,10 @@
                 "name": "OCR_查词"
             },
             "_29": {
-                "name": "Anki_录音"
+                "name": "录音"
             },
             "_30": {
-                "name": "Anki_录音_例句"
+                "name": "录音_例句"
             },
             "_32": {
                 "name": "自动朗读"
@@ -952,7 +775,16 @@
                 "name": "朗读_单词"
             },
             "_35": {
-                "name": "Anki_添加"
+                "name": "添加"
+            },
+            "playlastrecord": {
+                "name": "播放自动录音"
+            },
+            "croprecord": {
+                "name": "区域录制"
+            },
+            "recordwindow": {
+                "name": "窗口录制"
             }
         }
     },
@@ -1028,11 +860,6 @@
             "use": false,
             "name": "edgeTTS"
         },
-        "NeoSpeech": {
-            "use": false,
-            "name": "NeoSpeech",
-            "type": "offline"
-        },
         "tolk": {
             "use": false,
             "name": "Tolk (读屏软件)",
@@ -1059,7 +886,7 @@
         },
         "voiceroid2": {
             "use": false,
-            "name": "VoiceRoid2",
+            "name": "VoiceRoid/A.I.VOICE",
             "type": "offline",
             "args": {
                 "path": ""
@@ -1271,7 +1098,8 @@
         "mojidict": {
             "canGetUrl": false,
             "use": true,
-            "name": "Moji辞书"
+            "name": "Moji辞书",
+            "langs": ["ja"]
         },
         "youdao": {
             "use": true,
@@ -1279,19 +1107,23 @@
         },
         "jisho": {
             "use": true,
-            "name": "jisho"
+            "name": "jisho",
+            "langs": ["ja"]
         },
         "jpdb": {
             "use": true,
-            "name": "jpdb"
+            "name": "jpdb",
+            "langs": ["ja"]
         },
         "japandict": {
             "use": true,
-            "name": "JapanDict"
+            "name": "JapanDict",
+            "langs": ["ja"]
         },
         "weblio": {
             "use": true,
-            "name": "weblio"
+            "name": "weblio",
+            "langs": ["ja"]
         },
         "chatgptlike": {
             "canGetUrl": false,
@@ -1304,8 +1136,9 @@
                 "SECRET_KEY": "",
                 "使用自定义promt": false,
                 "自定义promt": "",
-                "Temperature": 0,
                 "max_tokens": 4096,
+                "Temperature": 0,
+                "Temperature.use": true,
                 "use_max_completion_tokens": false,
                 "top_p": 0.3,
                 "top_p_use": true,
@@ -1343,7 +1176,7 @@
                         "low",
                         "medium",
                         "high",
-                        "xhign"
+                        "xhigh"
                     ],
                     "list": [
                         "none",
@@ -1351,7 +1184,7 @@
                         "low",
                         "medium",
                         "high",
-                        "xhign"
+                        "xhigh"
                     ]
                 },
                 "customparams": {
@@ -1428,6 +1261,7 @@
                     "placeholder": "You are a professional dictionary assistant whose task is to help users search for information such as the meaning, pronunciation, etymology, synonyms, antonyms, and example sentences of {srclang} words. \nYou should be able to handle queries in multiple languages and provide in-depth information or simple definitions according to user needs. You should reply in {tgtlang}.\nThe user may provide the sentence in which the word is located. If the user provides the sentence in which the word is located, the semantics of the word in the sentence should also be analyzed."
                 },
                 "Temperature": {
+                    "refswitch": "Temperature.use",
                     "type": "spin",
                     "min": 0,
                     "max": 1,
@@ -1481,17 +1315,11 @@
             "name": "自定义"
         }
     },
-    "theme3": "PyQtDarkTheme",
-    "useopenlink": false,
     "useopenlinklink1": [
         "https://www.google.com/search?q={word}",
         "https://jpdb.io/search?q={word}",
         "https://www.weblio.jp/content/{word}"
     ],
-    "usesearchword": false,
-    "usesearchword_S": false,
-    "usesearchword_S_hover": false,
-    "usecopyword": false,
     "wordclickkbtriggerneed": {},
     "wordclickkbtrigger": {},
     "usewordoriginfor": {},
@@ -1742,18 +1570,6 @@
             "color": "#1839f0",
             "name": "LEC"
         },
-        "itrans": {
-            "use": false,
-            "color": "blue",
-            "useproxy": false,
-            "name": "itrans"
-        },
-        "lingva": {
-            "use": false,
-            "color": "blue",
-            "useproxy": false,
-            "name": "lingva"
-        },
         "TranslateCom": {
             "use": false,
             "color": "blue",
@@ -1899,17 +1715,6 @@
         }
     },
     "realtime_edit_target": "realtime_edit",
-    "WordViewTooltipColor": "#c0ffc0ff",
-    "WordViewTooltipContentColor": "#c0ffffff",
-    "WordViewTooltipHideFocus": true,
-    "WordViewTooltipHideLeave": false,
-    "WordViewTooltipRadius": 4,
-    "WordViewTooltipBorder": 5,
-    "word_hover_border_R": 4,
-    "word_hover_border": 8,
-    "word_hover_bg_color": "#333",
-    "word_hover_text_color": "white",
-    "autostarthook": true,
     "minlength": 0,
     "maxlength": 10000,
     "ocr_trigger_events": [
@@ -1937,6 +1742,5 @@
     "wordlabel": [],
     "wordlabel2": [],
     "noundictconfig_ex": [],
-    "toppest_translator": null,
     "extraLangs": []
 }

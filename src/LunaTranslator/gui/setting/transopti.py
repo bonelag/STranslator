@@ -72,21 +72,22 @@ def setTab7_lazy(self, basel: QLayout):
     for _ in _bads:
         globalconfig["postprocess_rank"].remove(_)
     sortlist: list = globalconfig["postprocess_rank"]
+    filteredlist = [post for post in sortlist if post in postprocessconfig]
     savelist = []
     savelay = []
     savescroll = []
 
     def changerank(item, up, tomax, savescroll):
 
-        idx = sortlist.index(item)
+        idx = filteredlist.index(item)
         if tomax:
-            idx2 = 0 if up else (len(sortlist) - 1)
+            idx2 = 0 if up else (len(filteredlist) - 1)
         else:
             idx2 = idx + (-1 if up else 1)
-        if idx2 < 0 or idx2 >= len(sortlist):
+        if idx2 < 0 or idx2 >= len(filteredlist):
             return
+        other = filteredlist[idx2]
         headoffset = 1
-        sortlist[idx], sortlist[idx2] = sortlist[idx2], sortlist[idx]
         for i, ww in enumerate(savelist[idx + headoffset]):
             ll: QGridLayout = savelay[0]
             w1 = ll.indexOf(ww)
@@ -101,6 +102,9 @@ def setTab7_lazy(self, basel: QLayout):
             savelist[idx2 + headoffset],
             savelist[idx + headoffset],
         )
+        filteredlist[idx], filteredlist[idx2] = filteredlist[idx2], filteredlist[idx]
+        si1, si2 = sortlist.index(item), sortlist.index(other)
+        sortlist[si1], sortlist[si2] = sortlist[si2], sortlist[si1]
         if tomax:
             scroll: QScrollArea = savescroll[0]
             if up:
@@ -117,7 +121,9 @@ def setTab7_lazy(self, basel: QLayout):
             continue
         if post == "_11":
             config = D_getIconButton(
-                callback=lambda: selectdebugfile("mypost.py"), icon="fa.edit"
+                callback=lambda: selectdebugfile("mypost.py"),
+                icon="fa.edit",
+                tips=postprocessconfig[post]["name"] + "_编辑",
             )
         else:
             if "args" in postprocessconfig[post]:
@@ -146,7 +152,10 @@ def setTab7_lazy(self, basel: QLayout):
                         600,
                         items,
                     )
-                config = D_getIconButton(callback=callback)
+                config = D_getIconButton(
+                    callback=callback,
+                    tips=postprocessconfig[post]["name"] + "_设置",
+                )
             else:
                 config = ""
 
@@ -154,15 +163,20 @@ def setTab7_lazy(self, basel: QLayout):
             callback=functools.partial(changerank, post, True, False, savescroll),
             icon="fa.arrow-up",
             callback2=functools.partial(changerank, post, True, True, savescroll),
+            tips=postprocessconfig[post]["name"] + "_上移",
         )
         button_down = D_getIconButton_mousefollow(
             callback=functools.partial(changerank, post, False, False, savescroll),
             icon="fa.arrow-down",
             callback2=functools.partial(changerank, post, False, True, savescroll),
+            tips=postprocessconfig[post]["name"] + "_下移",
         )
 
         l = [
-            D_getdoclink("textprocess.html#anchor-" + post),
+            D_getdoclink(
+                "textprocess.html#anchor-" + post,
+                tipsfor=postprocessconfig[post]["name"],
+            ),
             ((postprocessconfig[post]["name"]), 5),
             D_getsimpleswitch(postprocessconfig[post], "use"),
             config,
@@ -180,7 +194,7 @@ def setTab7_lazy(self, basel: QLayout):
         if checkpostlangmatch(name):
             grids2.append(
                 [
-                    D_getdoclink("transoptimi.html#anchor-" + name),
+                    D_getdoclink("transoptimi.html#anchor-" + name, tipsfor=visname),
                     ((visname), 5),
                     D_getsimpleswitch(globalconfig["transoptimi"], name),
                 ]
@@ -192,8 +206,10 @@ def setTab7_lazy(self, basel: QLayout):
 
             if setting:
                 kwarg = dict(callback=functools.partial(__, setting, self))
+                kwarg.update(tips=visname + "_设置")
                 if name == "myprocess":
                     kwarg.update(icon="fa.edit")
+                    kwarg.update(tips=visname + "_编辑")
                 grids2[-1].append(D_getIconButton(**kwarg))
     grids2 += [[("", 15)]]
 

@@ -88,6 +88,14 @@
     rt {
         user-select: none;
     }
+
+    .lunatranslator_rt [data-kana]::before {
+        content: attr(data-kana);
+    }
+
+    .lunatranslator_clickword {
+        background: var(--luna_word_bg);
+    }
 </style>
 <style id="tooltipstyle">
     .tooltip {
@@ -312,9 +320,9 @@
     }
 
     const urlParams = new URLSearchParams(window.location.search);
-    function safe_calllunaclickedword(e, word, app) {
+    function safe_calllunaclickedword(e, word, which) {
         if (window.LUNAJSObject)
-            LUNAJSObject.calllunaclickedword(word, app)
+            LUNAJSObject.calllunaclickedword(word, which)
         else {
             const url = new URL('/page/dictionary', window.location.origin);
             url.searchParams.append('word', word['word'])
@@ -324,7 +332,7 @@
                 flowclickdictionary(e, url.toString())
             }
             else {
-                //wsinvoke('calllunaclickedword', [word, app])
+                //wsinvoke('calllunaclickedword', [word, which])
                 //比起在luna里打开，用新的标签页打开似乎是更好的选择
                 window.open(url.toString())
             }
@@ -332,9 +340,6 @@
     }
 </script>
 <script>
-    function _simpleuid() {
-        return 'luna' + Math.random().toString(36).substr(2, 9);
-    }
     function maybesethtml(ele, args, text) {
         if (args.userawhtml) {
             ele.innerHTML = text
@@ -365,66 +370,69 @@
         ele.style.color = `var(--${args.color})`
         return ele
     }
-    function createyinyingstyle(styleargs, _id, color) {
+    function createyinyingrule(styleargs) {
         let ntimes = ""
         for (let i = 0; i < styleargs.shadowforce; i++) {
-            ntimes += `0px 0px calc(${styleargs.shadowR}em + ${styleargs.shadowR_ex}px) var(--${color})`
+            ntimes += `0px 0px calc(${styleargs.shadowR}em + ${styleargs.shadowR_ex}px) var(--luna_sc)`
             if (i == styleargs.shadowforce - 1)
                 ntimes += ";"
             else
                 ntimes += ","
         }
-        return `#${_id}{text-shadow:${ntimes}}`
+        return `.lunatranslator_ts_yinying{text-shadow:${ntimes}}`
     }
     function yinying_create_internal(styleargs, name, text, args) {
         let ele = createnameandtext(name, text, args)
         ele.style.color = `var(--YINYING_FILLCOLOR)`
-        let _id = _simpleuid()
-        ele.id = _id
-        let style = document.createElement('style')
-        style.innerHTML = createyinyingstyle(styleargs, _id, args.color)
-        style.classList.add('yinyingstyleklass')
-        style.setAttribute('__color', args.color)
-        style.setAttribute('__id', _id)
-        ele.appendChild(style)
+        ele.classList.add('lunatranslator_ts_yinying')
+        ele.style.setProperty('--luna_sc', `var(--${args.color})`)
         return ele
     }
-    function createmiaobianstyle(styleargs, _id, color) {
+    function createmiaobianrule(styleargs) {
 
-        let c2 = `var(--${color})`
+        let c2 = `var(--luna_mb_color)`
         let c1 = `var(--miaobianfillcolor)`
         if (styleargs.reverse) {
             c2 = `var(--miaobianfillcolor)`
-            c1 = `var(--${color})`
+            c1 = `var(--luna_mb_color)`
         }
         //paint-order: stroke; 需要123,不再支持低版本webview2
-        return `#${_id} span{ 
+        return `.lunatranslator_ts_miaobian span{
         color: ${c2};
         -webkit-text-stroke: calc(${styleargs.width_rate}em + ${styleargs.width}px) ${c1};
-        paint-order: stroke; 
+        paint-order: stroke;
         }`
     }
     function miaobian12_common(styleargs, name, text, args) {
         let ele = document.createElement('span')
-        let _id = _simpleuid()
-        ele.id = _id
-        let style = document.createElement('style')
-        style.innerHTML = createmiaobianstyle(styleargs, _id, args.color)
-        style.setAttribute('__color', args.color)
-        style.setAttribute('__id', _id)
-        style.classList.add('miaobiaostyleklass')
-        ele.appendChild(style)
+        ele.classList.add('lunatranslator_ts_miaobian')
+        ele.style.setProperty('--luna_mb_color', `var(--${args.color})`)
         let p = createnameandtext(name, text, args)
         ele.appendChild(p)
         return ele
-
     }
     regist_style_imp = {
         normal: normal_create_internal,
         yinying: yinying_create_internal,
         miaobian1: miaobian12_common,
     }
+    regist_style_rules = {
+        normal: (_) => "",
+        yinying: createyinyingrule,
+        miaobian1: createmiaobianrule,
+    }
+    const _textstyle_args = {}
+    function settextstylecontrol(style, styleargs) {
+        const key = JSON.stringify(styleargs)
+        if (_textstyle_args[style] && _textstyle_args[style].key === key) return
+        _textstyle_args[style] = { key: key, styleargs: styleargs }
+        let css = ''
+        for (const s in _textstyle_args)
+            css += regist_style_rules[s](_textstyle_args[s].styleargs)
+        document.getElementById('textstylecontrol').innerHTML = css
+    }
     function dispatch_text_style(style, styleargs, name, text, args) {
+        settextstylecontrol(style, styleargs)
         return regist_style_imp[style](styleargs, name, text, args)
     }
 </script>
@@ -442,6 +450,7 @@
 </style>
 <style id="maybeshowatcenter"></style>
 <style id="styleforfont"></style>
+<style id="textstylecontrol"></style>
 <style id="clickwordhover">
     :root {
         --clickwordhover: rgba(0, 0, 0, 0.5)
@@ -522,6 +531,7 @@
         let rectscollect = []
 
         spans.forEach(span => {
+            if (span.classList.contains('span_ruby_flag')) return
             let rects = span.getClientRects()
             for (let i = 0; i < rects.length; i++) {
                 let rect = rects[i]
@@ -667,11 +677,11 @@
         let text = decodeURIComponent(textu)
         let div = document.getElementById(get_out_div(_id))
         div.dir = isRTL(text) ? 'rtl' : 'auto'
-        let innerele = dispatch_text_style(style, styleargs, name, text, args);
         let ele = document.getElementById(_id)
         if (clear)
             clearparent(ele)
         ele.innerHTML = ''
+        let innerele = dispatch_text_style(style, styleargs, name, text, args);
         ele.appendChild(innerele)
         drawBackgrounds()
         safe_calllunaheightchange()
@@ -842,24 +852,24 @@
                 return
             }
             eleori = makeinlineblock(eleori)//还是得用这个，没辙，不然：无法ruby-overhang:none，而且注音和文字有overlap。至于如果一个被注音文字很长，导致换行不正常的问题，暂时没办法了。
-            let uid = _simpleuid()
             let mark = document.createElement('mark')
             mark.appendChild(eleori)
             eleori = mark
-            eleori.classList.add(uid)
-            let style1 = document.createElement('style')
-            style1.innerHTML += `.${uid} {background: var(--${word.color}); } `
 
             eleori.setAttribute('word', JSON.stringify(word))
             eleori.addEventListener('click', function (e) {
-                safe_calllunaclickedword(e, JSON.parse(this.getAttribute('word')), false)
+                safe_calllunaclickedword(e, JSON.parse(this.getAttribute('word')), 'left')
+            })
+            eleori.addEventListener('auxclick', function (e) {
+                if (event.button === 1)
+                    safe_calllunaclickedword(e, JSON.parse(this.getAttribute('word')), 'mid')
             })
             eleori.oncontextmenu = function (e) {
                 if (!allowclickword) return
                 if (window.getSelection().toString()) { }
                 else {
                     event.preventDefault();
-                    safe_calllunaclickedword(e, JSON.parse(this.getAttribute('word')), true)
+                    safe_calllunaclickedword(e, JSON.parse(this.getAttribute('word')), 'right')
                 }
             }
 
@@ -867,14 +877,18 @@
             if (word.specialinfo)
                 eleori.classList.add('lunatranslator_clickword_force')
             eleori.classList.add('lunatranslator_clickword')
-            eleori.appendChild(style1)
+            eleori.style.setProperty('--luna_word_bg', `var(--${word.color})`)
 
             if ((word.word != word.kana) && word.kana && (!word.hidekana) && (word.kana.trim().length)) {
 
                 let ruby = document.createElement('ruby')
                 ruby.appendChild(eleori)
                 let rt = document.createElement('rt')
-                rt.appendChild(makeinlineblock(dispatch_text_style(style, styleargs, '', word.kana, { color: kanacolor })))
+                let span = dispatch_text_style(style, styleargs, '', '', { color: kanacolor })
+                let kanaspan = span.querySelector('.lunatranslator_text_all') || span
+                kanaspan.dataset.kana = word.kana
+                span.classList.add('span_ruby_flag')
+                rt.appendChild(makeinlineblock(span))
                 rt.classList.add('klass_font_hira')
                 rt.classList.add('lunatranslator_rt')
                 rt.setAttribute('aria-hidden', 'true')
@@ -939,6 +953,15 @@
     document.addEventListener('mousedown', function (e) {
         if (e.button == 0)
             window.getSelection().removeAllRanges()
+        // 当 Qt 已接管光标（鼠标处于窗口边框 resize 区）时，按下必须交给
+        // 外部 Qt 框架处理缩放，并阻止 webview 内的文字选取；否则点击边框
+        // 附近文字时会被 isPointOverText 判定为选文字，导致无法缩放窗口。
+        if (luna_current_cursor !== 'default' && luna_current_cursor !== 'text') {
+            e.preventDefault()
+            if (window.LUNAJSObject)
+                LUNAJSObject.calllunaMousePress(e.button, e.clientX, e.clientY)
+            return
+        }
         if (!isPointOverText(e.clientX, e.clientY)) {
             if (window.LUNAJSObject)
                 LUNAJSObject.calllunaMousePress(e.button, e.clientX, e.clientY)
@@ -959,10 +982,19 @@
             LUNAJSObject.calllunaEnter()
         }
     });
+    var luna_current_cursor = 'default'
     function switchcursor(cursor) {
-        document.getElementById('luna_atback_div').style.cursor = cursor
-        document.getElementById('luna_overlay_div').style.cursor = cursor
-
+        // 用通配 + !important 注入，压过文字/链接等元素自带的光标，
+        // 否则 resize 光标会被内容元素覆盖（原来只改两个 div，压不住）。
+        // cursor 为 'default' 时不注入规则，交还给内容元素自身的光标。
+        luna_current_cursor = cursor || 'default'
+        var s = document.getElementById('luna_cursor_style')
+        if (!s) {
+            s = document.createElement('style')
+            s.id = 'luna_cursor_style'
+            document.head.appendChild(s)
+        }
+        s.innerHTML = (cursor && cursor !== 'default') ? ('*{cursor:' + cursor + ' !important;}') : ''
     }
     function measureheight(t, args) {
         let span = document.createElement('span')
@@ -984,6 +1016,7 @@
         if (args.fontFamily) style += `font-family: ${args.fontFamily};`
         if (args.fontSize) style += `font-size: ${args.fontSize}pt;`
         if (args.bold != undefined) style += `font-weight: ${args.bold ? "bold" : "normal"} ;`
+        if (args.italic != undefined) style += `font-style: ${args.italic ? "italic" : "normal"} ;`
         if (args.marginTop != undefined) style += `margin-top: ${args.marginTop};`
         if (args.marginBottom != undefined) style += `margin-bottom: ${args.marginBottom};`
         return `.${t}{${style}}`
@@ -1007,23 +1040,11 @@
         safe_calllunaheightchange()
     }
     function yinying_dynamic(styleargs) {
-        document.querySelectorAll('.yinyingstyleklass').forEach(
-            (ele) => {
-                let __color = ele.getAttribute('__color')
-                let __id = ele.getAttribute('__id')
-                ele.innerHTML = createyinyingstyle(styleargs, __id, __color)
-            }
-        )
+        settextstylecontrol('yinying', styleargs)
         return `--YINYING_FILLCOLOR:${styleargs.fillcolor};`
     }
     function miaobian12_dynamic(styleargs) {
-        document.querySelectorAll('.miaobiaostyleklass').forEach(
-            (ele) => {
-                let __color = ele.getAttribute('__color')
-                let __id = ele.getAttribute('__id')
-                ele.innerHTML = createmiaobianstyle(styleargs, __id, __color)
-            }
-        )
+        settextstylecontrol('miaobian1', styleargs)
         return `--miaobianfillcolor:${styleargs.fillcolor};`
     }
     regist_style_dynamic = {

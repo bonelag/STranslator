@@ -1,11 +1,12 @@
 import time, uuid, json
-import os, threading, re, winreg, copy
+import os, threading, re, copy
 from qtsymbols import *
 from traceback import print_exc
 from urllib.parse import unquote
 from sometypes import TranslateResult, TranslateError, WordSegResult
 from myutils.config import (
     globalconfig,
+    ui_settings,
     savehook_new_list,
     findgameuidofpath,
     magpie_config,
@@ -33,6 +34,7 @@ from myutils.utils import (
     stringfyerror,
     targetmod,
     translate_exits,
+    cishuexits,
     useExCheck,
     safe_escape,
     getlangsrc,
@@ -44,7 +46,6 @@ from myutils.hwnd import getExeIcon, getcurrexe
 from textio.textsource.copyboard import copyboard
 from textio.textsource.texthook import texthook
 from textio.textsource.ocrtext import ocrtext
-from textio.textsource.textsourcebase import basetext
 from textio.textsource.filetrans import filetrans
 from textio.textsource.mssr import mssr
 from gui.selecthook import hookselect
@@ -65,7 +66,7 @@ from myutils.somedatabase import somedatabase
 from myutils.audioplayer import series_audioplayer
 from gui.dynalang import LAction, LDialog
 from gui.setting.setting import Setting
-from gui.usefulwidget import PopupWidget, pixmapviewer
+from gui.usefulwidget import PopupWidget, pixmapviewer, create_centered_rect
 from gui.RichMessageBox import RichMessageBox
 from gui.rendertext.texttype import TextType, SpecialColor, TranslateColor
 from network.server.servicecollection import registerall
@@ -138,7 +139,7 @@ class BASEOBJECT(QObject):
     progresssignal4 = pyqtSignal(str, int)
     versiontextsignal = pyqtSignal(str)
     clipboardcallback = pyqtSignal(bool, str)
-    hover_search_word = pyqtSignal(str, str, bool, bool, bool)
+    hover_search_word = pyqtSignal(dict)
     settin_ui_showsignal = pyqtSignal()
     showandsolvesig = pyqtSignal(str, str)
     selecthookbuttonstatus = pyqtSignal(bool)
@@ -148,6 +149,7 @@ class BASEOBJECT(QObject):
     show_original_switch = pyqtSignal(bool)
     sourceswitchs = pyqtSignal(str, bool)
     fenyinsettings = pyqtSignal(bool)
+    fencisettings = pyqtSignal(bool)
     dispatch_translate = pyqtSignal(str, str)
     createimageviewsig = pyqtSignal(QWidget)
     switchtotspage = pyqtSignal()
@@ -163,6 +165,7 @@ class BASEOBJECT(QObject):
     llamacppdownloadcheck = pyqtSignal(int)
     llamacppposttask = pyqtSignal(str, object)
     wheelhistory = pyqtSignal(int)
+    switchdisplayengine = pyqtSignal(str)
 
     def connectsignal(self, signal: pyqtBoundSignal, callback):
         if signal in self.__cachesignal:
@@ -196,6 +199,7 @@ class BASEOBJECT(QObject):
     def initsignals(self):
         self.__cachesignal: "dict[pyqtBoundSignal, tuple]" = {}
         self.__cachesignal2: "dict[pyqtBoundSignal, list]" = {}
+        self.__connect_internal(self.switchdisplayengine)
         self.__connect_internal_all(self.llamacppstdout)
         self.__connect_internal(self.llamacppdownloadprogress)
         self.__connect_internal(self.llamacppdownloadcheck)
@@ -280,7 +284,7 @@ class BASEOBJECT(QObject):
         self.translators: "dict[str, basetrans]" = {}
         self.cishus: "dict[str, cishubase]" = {}
         self.specialreaders: "dict[object, TTSbase]" = {}
-        self.textsource_p: basetext = None
+        self.textsource_p: "copyboard|texthook|ocrtext|filetrans|mssr" = None
         self.currenttext = ""
         self.currenttext_raw = ""
         self.statusok = True
@@ -323,9 +327,9 @@ class BASEOBJECT(QObject):
     def serviceinit(self):
         gobject.base.portconflict.emit("")
         self.service.stop()
-        if globalconfig["networktcpenable"]:
+        if globalconfig.get("networktcpenable", False):
             try:
-                self.service.init(globalconfig["networktcpport"])
+                self.service.init(globalconfig.get("networktcpport", 2333))
             except OSError:
                 gobject.base.portconflict.emit("端口冲突")
 
@@ -348,7 +352,7 @@ class BASEOBJECT(QObject):
         return self._internal_reader
 
     @reader.setter
-    def reader(self, _):
+    def reader(self, _: TTSbase):
         if _ is None:
             self._internal_reader = None
             self.reader_uid = None
@@ -360,7 +364,7 @@ class BASEOBJECT(QObject):
             gobject.base.voicelistsignal.emit(_)
 
     @property
-    def textsource(self) -> basetext:
+    def textsource(self):
         return self.textsource_p
 
     @property
@@ -397,7 +401,7 @@ class BASEOBJECT(QObject):
                     self.gameuid = 0
         if self.textsource:
             self.textsource.hwndChanged(__hwnd)
-        if globalconfig["keepontop"]:
+        if globalconfig.get("keepontop", True):
             self.translation_ui.settop()
 
     @textsource.setter
@@ -532,7 +536,12 @@ class BASEOBJECT(QObject):
 
     def maybeneedtranslateshowhidetranslate(self):
         if globalconfig.get("showfanyi", True):
-            self.textgetmethod(self.currenttext_raw, is_auto_run=False, isRefresh=True)
+            self.textgetmethod(
+                self.currenttext,
+                is_auto_run=False,
+                isRefresh=True,
+                skippreprocess=True,
+            )
             self.translation_ui.translate_text.showhidetranslate(True)
         else:
             self.translation_ui.translate_text.showhidetranslate(False)
@@ -556,6 +565,7 @@ class BASEOBJECT(QObject):
         isFromHook=False,
         statusok=True,
         isRefresh=False,
+        skippreprocess=False,
     ):
         with self.solvegottextlock:
             succ = self.textgetmethod_1(
@@ -569,6 +579,7 @@ class BASEOBJECT(QObject):
                 isFromHook=isFromHook,
                 statusok=statusok,
                 isRefresh=isRefresh,
+                skippreprocess=skippreprocess,
             )
             if waitforresultcallback and not succ:
                 waitforresultcallback(TranslateResult())
@@ -594,6 +605,7 @@ class BASEOBJECT(QObject):
         isFromHook=False,
         statusok=True,
         isRefresh=False,
+        skippreprocess=False,
     ):
         if not text:
             return
@@ -605,7 +617,12 @@ class BASEOBJECT(QObject):
         __erroroutput = functools.partial(self.__erroroutput, None, erroroutput, None)
         currentsignature = uuid.uuid4() if not isRefresh else self.currentsignature
         try:
-            text = POSTSOLVE(text, isEx=waitforresultcallback, isFromHook=isFromHook)
+            text = POSTSOLVE(
+                text,
+                isEx=waitforresultcallback,
+                isFromHook=isFromHook,
+                skippreprocess=skippreprocess,
+            )
             gobject.base.showandsolvesig.emit(origin, text)
             if not text:
                 return
@@ -730,8 +747,10 @@ class BASEOBJECT(QObject):
             elif waitforresultcallbackengine_force:
                 return
 
-        usefultranslators = real_fix_rank.copy()
-        if globalconfig["fix_translate_rank"] and (not waitforresultcallback):
+        usefultranslators = set(real_fix_rank)
+        if globalconfig.get("fix_translate_rank", False) and (
+            not waitforresultcallback
+        ):
             _showrawfunction = functools.partial(
                 self._delaypreparefixrank, _showrawfunction, real_fix_rank, is_auto_run
             )
@@ -845,7 +864,7 @@ class BASEOBJECT(QObject):
 
     def GetTranslationCallback(
         self,
-        usefultranslators: list,
+        usefultranslators: set,
         waitforresultcallback,
         classname,
         currentsignature,
@@ -861,8 +880,7 @@ class BASEOBJECT(QObject):
         is_auto_run=True,
     ):
         with self.gettranslatelock:
-            if classname in usefultranslators:
-                usefultranslators.remove(classname)
+            usefultranslators.discard(classname)
             if (
                 waitforresultcallback is None
                 and currentsignature != self.currentsignature
@@ -943,8 +961,8 @@ class BASEOBJECT(QObject):
                         globalconfig.get("read_trans", False)
                         and (not read_trans_once_check)
                         and (
-                            (globalconfig["toppest_translator"] == classname)
-                            or ((not globalconfig["toppest_translator"]))
+                            (globalconfig.get("toppest_translator") == classname)
+                            or ((not globalconfig.get("toppest_translator")))
                         )
                     ):
                         self.readcurrent()
@@ -1083,7 +1101,7 @@ class BASEOBJECT(QObject):
         self.audioplayer.timestamp = uuid.uuid4()
         self.reader.read(text, True, self.audioplayer.timestamp)
 
-    def loadreader(self, use, privateconfig=None, init=True, uid=None):
+    def loadreader(self, use, privateconfig=None, init=True, uid=None) -> TTSbase:
         aclass = importlib.import_module("tts." + use).TTS
         if uid is None:
             uid = uuid.uuid4()
@@ -1250,9 +1268,8 @@ class BASEOBJECT(QObject):
                 if _type not in globalconfig[rankkey]:
                     # 对于首选的翻译，如果关闭后重新激活，则置顶而非置底
                     # 若手动调整到非指定位置，则保持不变
-                    if (
-                        fanyiorcishu == "fanyi"
-                        and _type == globalconfig["toppest_translator"]
+                    if fanyiorcishu == "fanyi" and _type == globalconfig.get(
+                        "toppest_translator"
                     ):
                         globalconfig[rankkey].insert(0, _type)
                     else:
@@ -1275,8 +1292,18 @@ class BASEOBJECT(QObject):
 
     def cishuinitmethod(self, type_):
 
-        aclass = importlib.import_module("cishu." + type_)
-        aclass = getattr(aclass, type_)
+        p = cishuexits(type_)
+        if not p:
+            raise Exception()
+        amodel = importlib.import_module(p)
+        if hasattr(amodel, "Cishu"):
+            aclass = getattr(amodel, "Cishu")
+        elif hasattr(amodel, type_):
+            aclass = getattr(amodel, type_)
+        elif hasattr(amodel, "MyCishu"):
+            aclass = getattr(amodel, "MyCishu")
+        else:
+            raise Exception()
         return aclass(type_)
 
     def maybesetedittext(self, text):
@@ -1320,7 +1347,7 @@ class BASEOBJECT(QObject):
         if ((not ismenulist)) and self.__dontshowintaborsetbackdrop(widget):
             return
         if ismenulist:
-            name = globalconfig["theme3"]
+            name = ui_settings.get("theme3", "PyQtDarkTheme")
             NativeUtils.SetCornerNotRound(int(widget.winId()), False, name == "QTWin11")
             if name == "QTWin11":
                 NativeUtils.setAcrylicEffect(
@@ -1383,7 +1410,7 @@ class BASEOBJECT(QObject):
         os.startfile(link)
 
     @threader
-    def clickwordcallback(self, wordd: dict, append=False):
+    def clickwordcallback(self, wordd: dict, which: str):
         if isinstance(wordd, WordSegResult):
             word = wordd
         elif isinstance(wordd, dict):
@@ -1396,36 +1423,62 @@ class BASEOBJECT(QObject):
         ]
         sentence = self.currenttext
 
-        def __openlink(word1):
-            for link in globalconfig["useopenlinklink1"]:
-                os.startfile(
-                    link.replace("{word}", word1).replace("{sentence}", sentence)
-                )
-
         funcs = {
-            "copyword": lambda word1: NativeUtils.ClipBoard.setText(
-                (NativeUtils.ClipBoard.text + word1) if append else word1
+            "searchword": (
+                "usesearchword",
+                True,
+                "searchword_mousetrigger",
+                lambda word1, append: self.searchwordW.search_word.emit(
+                    dict(
+                        word=word1,
+                        sentence=sentence,
+                        append=append,
+                        checklangs=True,
+                    )
+                ),
             ),
-            "searchword": lambda word1: self.searchwordW.search_word.emit(
-                word1, sentence, append
+            "searchword_S": (
+                "usesearchword_S",
+                False,
+                "searchword_S_mousetrigger",
+                lambda word1, append: threader(gobject.base.hover_search_word.emit)(
+                    dict(
+                        word=word1,
+                        sentence=sentence,
+                        append=append,
+                        fromhover=which == "hover",
+                        checklangs=True,
+                    )
+                ),
             ),
-            "openlink": __openlink,
-            "searchword_S": lambda word1: threader(gobject.base.hover_search_word.emit)(
-                word1, sentence, append, False, False
+            "copyword": (
+                "usecopyword",
+                False,
+                "copyword_S_mousetrigger",
+                lambda word1, append: NativeUtils.ClipBoard.setText(
+                    (NativeUtils.ClipBoard.text + word1) if append else word1
+                ),
             ),
         }
         noneedkeys = []
         keytriggered = []
+        append = False
         for k in funcs:
-            if not globalconfig["use" + k]:
+            if not globalconfig.get(funcs[k][0], funcs[k][1]):
                 continue
+            if which != globalconfig.get(funcs[k][2], "left"):
+                if globalconfig.get(funcs[k][2], "left") == "left" and which == "right":
+                    append = True
+                else:
+                    continue
             result = self.checkkeypresssatisfy(k)
             if result == -1:
                 noneedkeys.append(k)
             elif result:
                 keytriggered.append(k)
-        for k in keytriggered if keytriggered else noneedkeys:
-            funcs[k](wordwhich(k))
+        useks = keytriggered if keytriggered else noneedkeys
+        for k in useks:
+            funcs[k][3](wordwhich(k), append)
 
     def __dontshowintaborsetbackdrop(self, widget: QWidget):
         window_flags = widget.windowFlags()
@@ -1443,7 +1496,7 @@ class BASEOBJECT(QObject):
             return
         if widget == self.translation_ui:
             NativeUtils.SetWindowInTaskbar(
-                int(widget.winId()), globalconfig["showintab"], True
+                int(widget.winId()), globalconfig.get("showintab", False), True
             )
             return
         if self.__dontshowintaborsetbackdrop(widget):
@@ -1458,23 +1511,57 @@ class BASEOBJECT(QObject):
             # combobox的下拉框，然后这个widget会迅速销毁，会导致任务栏闪一下。没别的办法了姑且这样过滤一下
             return
         NativeUtils.SetWindowInTaskbar(
-            int(widget.winId()), globalconfig["showintab_sub"], False
+            int(widget.winId()), globalconfig.get("showintab_sub", True), False
         )
+
+    def giveupfocus_checked(self, widget: QWidget):
+        try:
+            self.translation_ui
+        except:
+            return
+        func = lambda: (
+            windows.WindowFocus.giveup(widget.winId())
+            if gobject.tempconfig.get("giveupfocus", False)
+            else windows.WindowFocus.retrieve(widget.winId())
+        )
+        if widget == self.translation_ui:
+            func()
+            return
+        if self.__dontshowintaborsetbackdrop(widget):
+            return
+        if isinstance(widget, (QMenu, QFrame)):
+            return
+        if (
+            isinstance(widget, QWidget)
+            and widget.parent() is None
+            and len(widget.children()) == 0
+        ):
+            # combobox的下拉框，然后这个widget会迅速销毁，会导致任务栏闪一下。没别的办法了姑且这样过滤一下
+            return
+        func()
 
     def createmenu1(self):
         trayMenu = QMenu(self.commonstylebase)
         showAction = LAction("显示", trayMenu)
         showAction.triggered.connect(self.translation_ui.show_)
+        showcenter = LAction("屏幕中间显示__", trayMenu)
+
+        def showatcenter():
+            self.translation_ui.setGeometry(
+                create_centered_rect(
+                    self.translation_ui.width(), self.translation_ui.height()
+                )
+            )
+            self.translation_ui.show_()
+
+        showcenter.triggered.connect(showatcenter)
         settingAction = LAction(qtawesome.icon("fa.gear"), "设置", trayMenu)
         settingAction.triggered.connect(gobject.base.settin_ui_showsignal)
         quitAction = LAction(qtawesome.icon("fa.times"), "退出", trayMenu)
         quitAction.triggered.connect(self.translation_ui.close)
         trayMenu.addAction(showAction)
         trayMenu.addAction(settingAction)
-        trayMenu.addSeparator()
-        trayMenu.addAction(quitAction)
-        trayMenu.addAction(showAction)
-        trayMenu.addAction(settingAction)
+        trayMenu.addAction(showcenter)
         trayMenu.addSeparator()
         trayMenu.addAction(quitAction)
         return trayMenu
@@ -1521,6 +1608,13 @@ class BASEOBJECT(QObject):
         for widget in QApplication.topLevelWidgets():
             self.setshowintab_checked(widget)
 
+    def giveupfocus(self):
+        isgiveupfocus = gobject.tempconfig.get("giveupfocus", False)
+        isgiveupfocus = not isgiveupfocus
+        gobject.tempconfig["giveupfocus"] = isgiveupfocus
+        for widget in QApplication.topLevelWidgets():
+            self.giveupfocus_checked(widget)
+
     def ismenulistframeless(self, widget: QWidget):
         ismenulist = isinstance(widget, (QMenu, PopupWidget)) or (
             type(widget) == QFrame
@@ -1533,14 +1627,14 @@ class BASEOBJECT(QObject):
             if self.ismenulistframeless(widget):
                 continue
             NativeUtils.SetCornerNotRound(
-                int(widget.winId()), globalconfig.get("force_rect", True), False
+                int(widget.winId()), ui_settings.get("force_rect", True), False
             )
 
     def setcommonstylesheet(self):
 
         dark = nowisdark()
         qtawesome.isdark = dark
-        __curr = (dark, globalconfig.get("WindowBackdrop", 3))
+        __curr = (dark, ui_settings.get("WindowBackdrop", 3))
         if (self.currentisdark, self.currentmica) != __curr:
             self.currentisdark, self.currentmica = __curr
             for widget in QApplication.allWidgets():
@@ -1552,7 +1646,7 @@ class BASEOBJECT(QObject):
         style = ""
         for _ in (0,):
             try:
-                name = globalconfig["theme3"]
+                name = ui_settings.get("theme3", "PyQtDarkTheme")
                 _fn = None
                 for n in static_data["themes"]:
                     if n["name"] == name:
@@ -1574,23 +1668,27 @@ class BASEOBJECT(QObject):
                         style = ff.read()
             except:
                 print_exc()
-        fontstr = lambda fsize: "font:{fontsize}pt  {fonttype}; {bold}".format(
+        fontstr = lambda fsize: "font:{fontsize}pt  {fonttype};".format(
             fontsize=fsize,
-            fonttype=globalconfig.get("settingfonttype", ""),
-            bold=("", "font-weight: bold;")[globalconfig.get("settingfontbold", False)],
+            fonttype=ui_settings.get(
+                "settingfonttype", gobject.tempconfig.get("settingfonttype", "")
+            ),
         )
-        style += "*{{  {}  }}".format(fontstr(globalconfig.get("settingfontsize", 12)))
+        style += "*{{  {}  }}".format(fontstr(ui_settings.get("settingfontsize", 12)))
         style += "QListWidget {{ {} }}".format(
-            fontstr(globalconfig.get("settingfontsize", 12) + 2)
+            fontstr(ui_settings.get("settingfontsize", 12) + 2)
         )
         style += "QGroupBox{ background:transparent; } QGroupBox#notitle{ margin-top:0px;} QGroupBox#notitle:title {margin-top: 0px;}"
         style += "#NOBORDER{border:0;margin:0;padding:0;}"
         if self.commonstylebase.styleSheet() != style:
             self.commonstylebase.setStyleSheet(style)
         font = QFont()
-        font.setFamily(globalconfig.get("settingfonttype", ""))
-        font.setPointSizeF(globalconfig.get("settingfontsize", 12))
-        font.setBold(globalconfig.get("settingfontbold", False))
+        font.setFamily(
+            ui_settings.get(
+                "settingfonttype", gobject.tempconfig.get("settingfonttype", "")
+            )
+        )
+        font.setPointSizeF(ui_settings.get("settingfontsize", 12))
         if QApplication.instance().font() != font:
             QApplication.instance().setFont(font)
 
@@ -1617,19 +1715,13 @@ class BASEOBJECT(QObject):
 
         return font_default
 
-    def set_font_default(self, lang: Languages, fonttype: str) -> None:
-        globalconfig[fonttype] = self.get_font_default(
-            lang, True if fonttype == "settingfonttype" else False
-        )
-
     def parsedefaultfont(self):
         for k in ["fonttype", "fonttype2", "settingfonttype"]:
-            if not globalconfig.get(k, ""):
+            if not ui_settings.get(k, ""):
                 l = Languages.Japanese if k == "fonttype" else getlanguse()
-                self.set_font_default(l, k)
-                # globalconfig[k] = QFontDatabase.systemFont(
-                #     QFontDatabase.SystemFont.GeneralFont
-                # ).family()
+                gobject.tempconfig[k] = self.get_font_default(
+                    l, True if k == "settingfonttype" else False
+                )
 
     def loadui(self, startwithgameuid):
         QApplication.instance().installEventFilter(self)
@@ -1638,9 +1730,10 @@ class BASEOBJECT(QObject):
 
         self.translation_ui = TranslatorWindow()
         NativeUtils.SetWindowInTaskbar(
-            int(self.translation_ui.winId()), globalconfig["showintab"], True
+            int(self.translation_ui.winId()), globalconfig.get("showintab", False), True
         )
-        self.translation_ui.show()
+        if not globalconfig.get("startupautohide", False):
+            self.translation_ui.show()
         self.translation_ui.aftershowdosomething()
         self.mainuiloadafter()
         startgame(startwithgameuid)
@@ -1679,7 +1772,7 @@ class BASEOBJECT(QObject):
         self.starttextsource()
         self.inittray()
         self.somedatabase = somedatabase()
-        self.urlprotocol()
+        NativeUtils.CreateUrlProtocol(getcurrexe())
         self.serviceinit()
         versioncheckthread()
         autostartllamacpp()
@@ -1711,7 +1804,7 @@ class BASEOBJECT(QObject):
 
     def WindowMessageCallback(self, msg: UINT, value1: WPARAM, value2: LPARAM):
         if msg == 0:
-            if globalconfig.get("darklight2", 0) == 0:
+            if ui_settings.get("darklight2", 0) == 0:
                 self.setstylesheetsignal.emit()
         elif msg == 1:
             running = value1 or value2
@@ -1759,10 +1852,9 @@ class BASEOBJECT(QObject):
         if not hwnd:  # window create/destroy,when destroy winId is None
             return
         windows.SetProp(int(obj.winId()), "Magpie.ToolWindow", windows.HANDLE(1))
-        if gobject.istest:
-            return
         self.cornerornot(obj)
         self.setshowintab_checked(obj)
+        self.giveupfocus_checked(obj)
         NativeUtils.SetWindowExtendFrame(int(hwnd))
         if self.currentisdark is not None:
             self.setdarkandbackdrop(obj, self.currentisdark)
@@ -1783,18 +1875,3 @@ class BASEOBJECT(QObject):
                 targetmod[k] = importlib.import_module("metadata." + k).searcher(k)
             except:
                 print_exc()
-
-    @tryprint
-    def urlprotocol(self):
-
-        key = winreg.CreateKey(
-            winreg.HKEY_CURRENT_USER, r"Software\Classes\lunatranslator"
-        )
-        winreg.SetValue(key, None, winreg.REG_SZ, "URL:lunatranslator")
-        winreg.SetValueEx(key, r"URL Protocol", 0, winreg.REG_SZ, "")
-        keysub = winreg.CreateKey(
-            winreg.HKEY_CURRENT_USER,
-            r"Software\Classes\lunatranslator\shell\open\command",
-        )
-        command = '"{}" --URLProtocol "%1"'.format(getcurrexe())
-        winreg.SetValue(keysub, r"", winreg.REG_SZ, command)

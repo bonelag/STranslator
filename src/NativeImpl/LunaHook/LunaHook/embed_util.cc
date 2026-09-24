@@ -2,7 +2,7 @@
 static std::atomic<bool> patch_fun_ptrs_patch_once_flag = true;
 DynamicShiftJISCodec *dynamiccodec = new DynamicShiftJISCodec(932);
 
-void cast_back(const HookParam &hp, TextBuffer *buff, const std::wstring &trans, bool normal)
+void cast_back(const HookParam &hp, TextBuffer *buff, const std::wstring &trans, bool normal, DWORD hostcodepage)
 {
 
   if (hp.type & CODEC_UTF16)
@@ -22,7 +22,7 @@ void cast_back(const HookParam &hp, TextBuffer *buff, const std::wstring &trans,
     }
     else
     {
-      astr = WideStringToString(trans, hp.codepage ? hp.codepage : ((hp.type & CODEC_UTF8) ? CP_UTF8 : commonsharedmem->codepage));
+      astr = WideStringToString(trans, hp.codepage ? hp.codepage : ((hp.type & CODEC_UTF8) ? CP_UTF8 : hostcodepage));
     }
     buff->from(astr);
   }
@@ -140,6 +140,8 @@ void patch_fun_ptrs_patch_once()
 }
 void solvefont(HookParam hp)
 {
+  if (!wcslen(commonsharedmem->fontFamily))
+    return;
   if (hp.embed_hook_font & DISABLE_FONT_SWITCH)
   {
     Hijack::Disable_Font_Switch = true;
@@ -156,13 +158,13 @@ void solvefont(HookParam hp)
   if (auto current_patch_fun = patch_fun.exchange(nullptr))
   {
     current_patch_fun();
-    dont_detach = true;
   }
   patch_fun_ptrs_patch_once();
 }
 static std::wstring alwaysInsertSpacesSTD(const std::wstring &text)
 {
   std::wstring ret;
+  ret.reserve(text.size() * 2);
   for (auto c : text)
   {
     ret.push_back(c);
@@ -180,24 +182,25 @@ bool charEncodableSTD(const wchar_t &ch, UINT codepage)
   s.push_back(ch);
   return StringToWideString(WideStringToString(s, codepage), codepage).value() == s;
 }
-static std::wstring insertSpacesAfterUnencodableSTD(const std::wstring &text, HookParam hp)
+static std::wstring insertSpacesAfterUnencodableSTD(const std::wstring &text, HookParam hp, DWORD hostcodepage)
 {
 
   std::wstring ret;
+  ret.reserve(text.size() * 2);
   for (const wchar_t &c : text)
   {
     ret.push_back(c);
-    if (!charEncodableSTD(c, hp.codepage ? hp.codepage : commonsharedmem->codepage))
+    if (!charEncodableSTD(c, hp.codepage ? hp.codepage : hostcodepage))
       ret.push_back(L' ');
   }
   return ret;
 }
-std::wstring adjustSpacesSTD(const std::wstring &text, HookParam hp)
+std::wstring adjustSpacesSTD(const std::wstring &text, HookParam hp, DWORD hostcodepage)
 {
   if (hp.type & EMBED_INSERT_SPACE_ALWAYS)
     return alwaysInsertSpacesSTD(text);
   else if (hp.type & EMBED_INSERT_SPACE_AFTER_UNENCODABLE)
-    return insertSpacesAfterUnencodableSTD(text, hp);
+    return insertSpacesAfterUnencodableSTD(text, hp, hostcodepage);
   return text;
 }
 bool isPauseKeyPressed()
@@ -273,13 +276,24 @@ bool checktranslatedok(TextBuffer buff)
 }
 bool TextHook::waitfornotify(TextBuffer *buff, ThreadParam tp)
 {
+  auto hostcodepage = hp.codepage ? hp.codepage : (commonsharedmem->codepage ? commonsharedmem->codepage : hp.detectedCodepage);
+  if (hp.isAscii() && !hostcodepage)
+  {
+    if (all_ascii(buff->viewA()))
+      hostcodepage = CP_UTF8;
+    else
+      return false;
+  }
   if (commonsharedmem->clearText)
   {
-    buff->from(" "); // 也可以选择对齐空格长度。到底哪个更稳定需要更多测试
+    if (hp.isAscii() && (hostcodepage == 932))
+      buff->from(" \x81\x40");
+    else
+      buff->from(" ");
     return true;
   }
   std::wstring origin;
-  if (auto t = commonparsestring(buff->data, buff->size, &hp, commonsharedmem->codepage))
+  if (auto t = commonparsestring(buff->data, buff->size, &hp, hostcodepage))
     origin = t.value();
   else
     return false;
@@ -301,7 +315,7 @@ bool TextHook::waitfornotify(TextBuffer *buff, ThreadParam tp)
   }
   if (hp.lineSeparator)
     strReplace(translate, L"\n", hp.lineSeparator);
-  translate = adjustSpacesSTD(translate, hp);
+  translate = adjustSpacesSTD(translate, hp, hostcodepage);
   switch (commonsharedmem->displaymode)
   {
   case Displaymode::TRANS:
@@ -314,6 +328,6 @@ bool TextHook::waitfornotify(TextBuffer *buff, ThreadParam tp)
     break;
   }
   solvefont(hp);
-  cast_back(hp, buff, translate, false);
+  cast_back(hp, buff, translate, false, hostcodepage);
   return true;
 }

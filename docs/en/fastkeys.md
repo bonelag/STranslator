@@ -41,7 +41,7 @@
 1. #### Lock Toolbar {#anchor-_9}
     When the toolbar is not locked, it will automatically hide when the mouse moves out; activating this will keep the toolbar always visible.
     When the toolbar is not locked and `Mouse Pass-through Window` is activated, the toolbar will only be displayed when the mouse moves to the **Mouse Pass-through Window button and the area to its left and right**; otherwise, it will be displayed as soon as the mouse enters the translation window.
-    If window effects (Aero/Arylic) are used and the toolbar is not locked, the toolbar will be in the z-axis area above the text area, not on the y-axis above the text area. This is because, due to Windows, when window effects are used, if the toolbar is only hidden rather than shrunk to reduce its window height, the hidden toolbar will still be rendered with the Acrylic/Aero background, causing a blank area where the toolbar is located.
+    If window effects (Aero/Acrylic) are used and the toolbar is not locked, the toolbar will be in the z-axis area above the text area, not on the y-axis above the text area. This is because, due to Windows, when window effects are used, if the toolbar is only hidden rather than shrunk to reduce its window height, the hidden toolbar will still be rendered with the Acrylic/Aero background, causing a blank area where the toolbar is located.
 
 1. #### Hide Toolbar {#anchor-52}
     Hides the toolbar. This setting takes priority over locking the toolbar.
@@ -64,6 +64,13 @@
 
 1. #### Save configuration immediately {#anchor-50}
     Save the current user configuration immediately, rather than waiting until exit.
+
+1. #### Give up window focus. {#anchor-giveupfocus}
+    Switches all windows of the program to a state where they cannot obtain focus, so that they will not compete with the game for focus when interacting with the window, increasing immersion.
+
+    In some cases, such as some older games that exit fullscreen when they lose focus, this feature may alleviate this problem.
+
+    Triggering the hotkey again restores the original state, and the window will be able to obtain focus normally.
 
 ## HOOK
 
@@ -157,7 +164,11 @@
     In OCR/clipboard mode, after binding the window, it can also be associated with the current game settings in HOOK mode, thus using the game's proprietary translation optimization dictionary, etc.
 
 1. #### Window Screenshot {#anchor-_21}
-    After binding the game window, you can take screenshots of the bound window (by default, two screenshots will be taken: GDI and Winrt, both of which may fail). If Magpie scaling is currently in use, it will also capture the magnified window.
+    If Magpie scaling is currently in use, it will capture the magnified window.
+
+    After binding the game window, you can take screenshots of the bound window. It first attempts a GDI capture, and falls back to Windows.Capture if that fails.
+
+    By default, left-click saves the screenshot to a file, and right-click saves it to the clipboard. The left and right click functions can be swapped in settings.
 
 1. #### Mute Game {#anchor-_22}
     After binding the game window, you can mute the game with one click, eliminating the hassle of muting the game in the system volume mixer.
@@ -165,10 +176,10 @@
 1. #### Game paused {#anchor-43}
     After binding the game window, you can pause or resume the game process with one click.
 
-1. #### Magpie Scale {#anchor-41}
+1. #### Window Zoom Full-screen mode zoom {#anchor-41}
     After binding the game window, you can use the built-in Magpie to perform full-screen scaling on the game window with one click.
 
-1. #### Magpie Windowed Scaling {#anchor-42}
+1. #### Window Zoom Windowed mode scaling {#anchor-42}
     After binding the game window, you can use the built-in Magpie to perform windowed scaling on the game window with one click.
 
 ## Dictionary Lookup
@@ -184,17 +195,6 @@
 1. #### OCR Look Up Word {#anchor-39}
     Select the OCR range for one OCR and then search for words
 
-1. #### Anki Recording {#anchor-_29}
-    Shortcut key for the recording function in the Anki add interface in the dictionary lookup window.
-
-1. #### Anki Recording Example Sentence {#anchor-_30}
-    Shortcut key for the recording function in the Anki add interface in the dictionary lookup window, but this shortcut key sets the recorded audio to the example sentence field.
-
-1. #### Anki Add {#anchor-_35}
-    Adds the word to Anki.
-
-1. #### Read Aloud Word {#anchor-_33}
-    Reads the word in the current dictionary lookup window.
 
 ## Customize
 

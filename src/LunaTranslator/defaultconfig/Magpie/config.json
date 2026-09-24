@@ -23,6 +23,7 @@
     "saveEffectSources": false,
     "warningsAreErrors": false,
     "allowScalingMaximized": true,
+    "keepScreenOn": false,
     "simulateExclusiveFullscreen": false,
     "alwaysRunAsAdmin": false,
     "showNotifyIcon": true,
@@ -155,7 +156,7 @@
                 "right": 0.0,
                 "bottom": 0.0
             },
-            "destAlignment": 4
+            "outputAlignment": 4
         }
     ],
     "overlay": {

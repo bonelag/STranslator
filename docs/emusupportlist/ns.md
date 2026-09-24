@@ -1,5 +1,19 @@
 |  | ID       | Game                |
 | ---- | ---------- | ------------------- |
+|  | 0100E81024F40000 | Le Mirage Mystique |
+|  | 010049A022BA0000 | BLACK WOLVES SAGA -Weiβ und Schwarz- |
+|  | 0100A0001B9F0000 | PSYCHIC ECLIPSE -reload- |
+|  | 0100A9501759E000 | ファミコン探偵倶楽部 笑み男 |
+|  | 0100E8B024BE6001 & 0100E8B024BE6002 | CHAOS;HEAD / CHAOS;CHILD らぶChu☆Chu！ DOUBLE PACK |
+|  | 01004620180D2000 | CHAOS;CHILD |
+|  | 0100D650180CA000 | CHAOS;HEAD NOAH |
+|  | 0100B9B00C6A4000 | この世の果てで恋を唄う少女ＹＵ－ＮＯ |
+|  | 010006200949E000 | The Charming Empire |
+|  | 0100F1B01C94E000 | クドわふたー Converted Edition |
+|  | 010016101100A000 | The House in Fata Morgana - Dreams of the Revenants Edition |
+|  | 01006FF014152000 | ハミダシクリエイティブ |
+|  | 010079D02431E000 | 君に惑い、君に溺れる。 |
+|  | 01001D402587E000 | 千銃士:Rhodoknight |
 |  | 01003000276E4000 | Dreamin' Her -僕は、彼女の夢を見る。- |
 |  | 0100C920270AA000 | Clover Reset |
 |  | 010090802801A000 | sins of KALEIDO |
@@ -40,6 +54,10 @@
 |  | 010036F023A16000 | DYNAMIC CHORD feat.KYOHSO Remaster edition |
 |  | 0100C32023A1A000 | DYNAMIC CHORD feat.apple-polisher Remaster edition |
 |  | 0100D4300EBF8000 | うたの☆プリンスさまっ♪Amazing Aria & Sweet Serenade LOVE |
+|  | 010024200E00A000 | うたの☆プリンスさまっ♪ Repeat LOVE |
+|  | 010088200EFE8000 | うたの☆プリンスさまっ♪Debut |
+|  | 0100B3E0149FC000 | うたの☆プリンスさまっ♪All Star |
+|  | 01008030149FE000 | うたの☆プリンスさまっ♪All Star After Secret |
 |  | 01007FD0211DA000 | 連呪 |
 |  | 010081D016E4E000 | DIG-ROCK -Documentary of Youthful Sounds- |
 |  | 010065402030A000 | 十鬼の絆 |
@@ -75,6 +93,7 @@
 |  | 0100C30020F70000 | BYAKKO ～四神部隊炎恋記～ |
 |  | 01007250089F8000 | LoveR Kiss |
 |  | 01001A4021670000 | あやかしごはん ～おおもりっ！～ for S |
+|  | 0100859027B4C000 | OVER REQUIEMZ |
 |  | 0100E9801CAC2000 | OVER REQUIEMZ |
 |  | 0100978013276000 | Memories Off |
 |  | 0100B4A01326E000 | Memories Off ～それから～ |
@@ -186,7 +205,6 @@
 |  | 0100874017BE2000 | BUSTAFELLOWS シーズン2 |
 |  | 0100F6F0207CC000 | BUSTAFELLOWS season2 |
 |  | 010094601D910000 | 5分後に意外な結末　モノクロームの図書館 |
-|  | 010024200E00A000 | うたの☆プリンスさまっ♪ Repeat LOVE |
 |  | 01000C7019E1C000 | ワンド オブ フォーチュン Ｒ～ |
 |  | 010088A01A774000 | ワンド オブ フォーチュン Ｒ２ ～時空に沈む黙示録～ |
 |  | 010051701A7BE000 | ワンド オブ フォーチュン Ｒ２ ＦＤ ～君に捧げるエピローグ～ |

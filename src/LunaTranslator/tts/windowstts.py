@@ -1,7 +1,7 @@
-import NativeUtils, os, threading, uuid, windows
+import NativeUtils, os, threading
+from LunaSubProcess import LunaSubProcess, NeoSpeech
 from tts.basettsclass import TTSbase, SpeechParam
 import xml.etree.ElementTree as ET
-from ctypes import c_int32
 from myutils.config import globalconfig, _TR
 
 
@@ -63,16 +63,20 @@ class TTS(TTSbase):
         return zip(names, paths)
 
     def getvoicelist(self):
-        self._7 = NativeUtils.SAPI.List(7)
-        self._10 = NativeUtils.SAPI.List(10)
         names = []
         vals = []
         for name, path in self.get_paths():
             names.append(name)
             vals.append((1, path))
-        for token, name in self._10 + self._7:
+        for token, name in NativeUtils.SAPI.List():
             names.append(name)
             vals.append((0, token))
+        try:
+            for token, name in zip(*LunaSubProcess.neospeechlist()):
+                names.append(name)
+                vals.append((2, token))
+        except Exception:
+            pass
         return vals, names
 
     cogdll = "Microsoft.CognitiveServices.Speech.extension.embedded.tts.dll"
@@ -92,38 +96,27 @@ class TTS(TTSbase):
 
     def checkifnatural(self, voice):
         t, path = voice
+        if t == 2:
+            if not isinstance(self._proc, NeoSpeech):
+                self._proc = LunaSubProcess.neospeech()
+                self.lastvoice = None
         if t != 1:
             return
         if self.lastvoice == path:
             return
         dllp = self.finddlldirectory()
         print(path, dllp, NativeUtils.QueryVersion(os.path.join(dllp, self.cogdll)))
-        exepath = os.path.join(os.getcwd(), "files/LunaSubprocess64.exe")
-        pipename = "\\\\.\\Pipe\\" + str(uuid.uuid4())
-        waitsignal = str(uuid.uuid4())
-        mapname = str(uuid.uuid4())
         lv = self.getname(path)[1]
-        cmd = '"{}" msnaturalvoice {} {} {} "{}" "{}" "{}"'.format(
-            exepath,
-            pipename,
-            waitsignal,
-            mapname,
-            path,
-            dllp,
-            self.extralicense if (lv != "0") else "",
+        self._proc = LunaSubProcess.msnaturalvoice(
+            path, dllp, self.extralicense if (lv != "0") else ""
         )
-        self.engine = NativeUtils.AutoKillProcess(cmd)
-
-        windows.WaitForSingleObject(NativeUtils.SimpleCreateEvent(waitsignal))
-        windows.WaitNamedPipe(pipename)
-        self.hPipe = windows.CreateFile(pipename)
-        self.mappedFile2 = windows.OpenFileMapping(mapname)
-        self.mem = windows.MapViewOfFile(self.mappedFile2)
         self.lastvoice = path
 
     def init(self):
         self.lock = threading.Lock()
         self.lastvoice = None
+        self._proc = None
+        self.checkifnatural(self.voice)
 
     def speak(self, content: str, voice_1: "tuple[int, str]", param: SpeechParam):
         t, voice = voice_1
@@ -131,11 +124,10 @@ class TTS(TTSbase):
             return NativeUtils.SAPI.Speak(content, voice, param.speed, param.pitch)
         elif t == 1:
             with self.lock:
-                content = self.createSSML(content, None, param)
                 self.checkifnatural(voice_1)
-                windows.WriteFile(self.hPipe, content.encode("utf-16-le"))
-                size = c_int32.from_buffer_copy(windows.ReadFile(self.hPipe, 4)).value
-                if size < 0:
-                    error: bytes = self.mem[:-size]
-                    raise Exception(error.decode())
-                return self.mem[:size]
+                content = self.createSSML(content, None, param)
+                return self._proc.speak(content)
+        elif t == 2:
+            with self.lock:
+                self.checkifnatural(voice_1)
+                return self._proc.speak(content, voice, param.speed, param.pitch)

@@ -1,6 +1,31 @@
 from qtsymbols import *
 from myutils.config import globalconfig
+import gobject
 from sometypes import WordSegResult
+
+
+class FontInfo:
+    def __init__(self, fm, size, bold, italic):
+        self.fm = fm
+        self.size = size
+        self.bold = bold
+        self.italic = italic
+
+    @property
+    def qfont(self):
+
+        font = QFont()
+        font.setFamily(self.fm)
+        font.setPointSizeF(self.size)
+        font.setBold(self.bold)
+        font.setItalic(self.italic)
+        return font
+
+    @property
+    def dict(self):
+        return dict(
+            fontFamily=self.fm, fontSize=self.size, bold=self.bold, italic=self.italic
+        )
 
 
 class TextType:
@@ -25,9 +50,9 @@ class ColorControl:
 
     def get(self):
         if self.type == self.RAW_TEXT_COLOR:
-            return globalconfig["rawtextcolor"]
+            return globalconfig.get("rawtextcolor", "#000000")
         if self.type == self.KANA_COLOR:
-            return globalconfig["jiamingcolor"]
+            return globalconfig.get("jiamingcolor", "black")
         if self.type == self.ERROR_COLOR:
             return "red"
         if self.type == self.COLOR_DEFAULT:
@@ -56,7 +81,9 @@ class ColorControl:
     def __hash__(self):
         return self._tuple_().__hash__()
 
-    def __eq__(self, value: "ColorControl"):
+    def __eq__(self, value):
+        if not isinstance(value, ColorControl):
+            return NotImplemented
         return self._tuple_() == value._tuple_()
 
 
@@ -130,47 +157,56 @@ class dataget:
     @property
     def _clickable(self):
         return (
-            globalconfig["usesearchword"]
-            or globalconfig["usecopyword"]
-            or globalconfig["usesearchword_S"]
+            (globalconfig.get("usesearchword", True))
+            or (globalconfig.get("usecopyword", False))
+            or (
+                globalconfig.get("usesearchword_S", False)
+                and (globalconfig.get("searchword_S_mousetrigger", "left") != "hover")
+            )
         )
 
     @property
     def _clickhovershow(self):
         return (
-            self._clickable
+            globalconfig.get("usesearchword", True)
+            or globalconfig.get("usecopyword", False)
+            or globalconfig.get("usesearchword_S", False)
             or globalconfig.get("word_hover_show_word_info", False)
-            or globalconfig["usesearchword_S_hover"]
         )
 
     def _getfontinfo(self, texttype: TextType):
         if texttype == TextType.Origin:
-            fm = globalconfig["fonttype"]
+            fm = globalconfig.get("fonttype", gobject.tempconfig.get("fonttype", ""))
             fs = globalconfig.get("fontsizeori", 16)
             bold = globalconfig.get("showbold", False)
+            italic = globalconfig.get("showitalic", False)
         else:
-            fm = globalconfig["fonttype2"]
+            fm = globalconfig.get("fonttype2", gobject.tempconfig.get("fonttype2", ""))
             fs = globalconfig.get("fontsize", 16)
             bold = globalconfig.get("showbold_trans", False)
-        return fm, fs, bold
+            italic = globalconfig.get("showitalic_trans", False)
+        return FontInfo(fm, fs, bold, italic)
 
     def _getfontinfo_kana(self):
-        fm, fs, bold = self._getfontinfo(TextType.Origin)
-        return fm, fs * globalconfig.get("kanarate", 0.5), bold
+        info = self._getfontinfo(TextType.Origin)
+        info.size *= globalconfig.get("kanarate", 0.5)
+        if not globalconfig.get("kanafontfollowdefault", True):
+            info.fm = globalconfig.get("kanafont", info.fm)
+            info.bold = globalconfig.get("kanabold", info.bold)
+            info.italic = globalconfig.get("kanaitalic", info.italic)
+        return info
 
     def _createqfont(self, texttype: TextType, klass=None):
-        fm, fs, bold = self._getfontinfo(texttype)
+        info = self._getfontinfo(texttype)
         if klass:
             data: dict = globalconfig["fanyi"].get(klass, {}).get("privatefont", {})
             if (not data.get("fontfamily_df", True)) and ("fontfamily" in data):
-                fm = data["fontfamily"]
+                info.fm = data["fontfamily"]
             if (not data.get("fontsize_df", True)) and ("fontsize" in data):
-                fs = data["fontsize"]
+                info.size = data["fontsize"]
             if (not data.get("showbold_df", True)) and ("showbold" in data):
-                bold = data["showbold"]
+                info.bold = data["showbold"]
+            if (not data.get("showitalic_df", True)) and ("showitalic" in data):
+                info.italic = data["showitalic"]
 
-        font = QFont()
-        font.setFamily(fm)
-        font.setPointSizeF(fs)
-        font.setBold(bold)
-        return font
+        return info.qfont

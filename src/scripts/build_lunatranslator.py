@@ -231,7 +231,6 @@ def get_cmake_args(arch, target):
     elif target == "winxp":
         config = "-DWINXP=ON -DWIN10ABOVE=OFF"
     if 0:
-        config += " -DWINXPEXTRADEF=ON"
         vsver = "Visual Studio 17 2022" if target == "winxp" else "Visual Studio 18 2026"
         Tool = "v141_xp" if target == "winxp" else f"host={arch}"
     else:
@@ -457,6 +456,9 @@ if __name__ == "__main__":
         shutil.copy(f"NativeImpl/builds/_x64_{target}/LunaSubprocess64.exe", "files")
         os.system(f"robocopy NativeImpl/builds/_x64_{target} files/DLL64 *.dll")
 
+        os.system(
+            f"python {os.path.join(rootthisfiledir,'getllamacppinfo.py')}"
+        )
         os.system(
             f"python {os.path.join(rootthisfiledir,'collectall.py')} {arch} {target}"
         )

@@ -148,6 +148,10 @@ class Requester(Requester_common):
             curl_easy_setopt(curl, CURLoption.POSTFIELDS, databytes)
             curl_easy_setopt(curl, CURLoption.POSTFIELDSIZE, len(databytes))
 
+        if server in ("127.0.0.1", "localhost"):
+            curl_easy_setopt(curl, CURLoption.FRESH_CONNECT, 1)
+            curl_easy_setopt(curl, CURLoption.FORBID_REUSE, 1)
+
         resp = Response_1(stream)
         resp.keeprefs.append(curl)
         resp.keeprefs.append(__)

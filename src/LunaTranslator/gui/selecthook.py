@@ -10,9 +10,11 @@ from myutils.config import (
     static_data,
     dynamiclink,
 )
+from gui.unityfontdownload import UnityFontDownloadDialog
+from myutils.wrapper import threader
 from myutils.utils import get_time_stamp, is_ascii_control
 from gui.gamemanager.dialog import dialog_setting_game
-from textio.textsource.texthook import texthook, HOSTINFO
+from textio.textsource.texthook import texthook
 from gui.usefulwidget import (
     closeashidewindow,
     getsimplecombobox,
@@ -24,8 +26,8 @@ from gui.usefulwidget import (
     getIconButton,
     FocusCombo,
     TableViewW,
+    create_centered_rect,
 )
-from gui.RichMessageBox import RichMessageBox
 from gui.dynalang import (
     LFormLayout,
     LRadioButton,
@@ -233,15 +235,7 @@ class searchhookparam(LDialog):
 
         layout1 = QHBoxLayout()
         layout1.addWidget(LLabel("代码页"))
-        if savehook_new_data[gobject.base.gameuid].get(
-            "hooksetting_follow_default", True
-        ):
-            cp = globalconfig["codepage_value"]
-        else:
-            cp = savehook_new_data[gobject.base.gameuid]["hooksetting_private"].get(
-                "codepage_value", globalconfig["codepage_value"]
-            )
-        self.codepagesave = {"spcp": cp}
+        self.codepagesave = {"spcp": 932}
         layout1.addWidget(
             getsimplecombobox(
                 static_data["codepage_display"],
@@ -426,10 +420,10 @@ class searchhookparam(LDialog):
 
 class hookselect(closeashidewindow):
     addnewhooksignal = pyqtSignal(tuple, bool, bool)
-    sysmessagesignal = pyqtSignal(int, str)
     removehooksignal = pyqtSignal(tuple)
     getfoundhooksignal = pyqtSignal(dict)
     update_item_new_line = pyqtSignal(tuple, str)
+    consoleoutput  = pyqtSignal(str)
     SaveTextThreadRole = Qt.ItemDataRole.UserRole + 1
 
     @property
@@ -437,19 +431,30 @@ class hookselect(closeashidewindow):
         return gobject.base.textsource
 
     def __init__(self, parent):
-        super(hookselect, self).__init__(parent, globalconfig["selecthookgeo"])
+        super(hookselect, self).__init__(
+            parent,
+            posinit=globalconfig.get(
+                "selecthookgeo", create_centered_rect(800, 600).getRect()
+            ),
+            possave=functools.partial(globalconfig.__setitem__, "selecthookgeo"),
+        )
         self.setupUi()
         self.hidesearchhookbuttons()
         self.is_focus_normal = True
         self.firsttimex = True
         self.searchhookparam = None
+        self.consoleoutput.connect(self.__consoleoutput)
         self.removehooksignal.connect(self.removehook)
         self.addnewhooksignal.connect(self.addnewhook)
-        self.sysmessagesignal.connect(self.sysmessage)
         self.update_item_new_line.connect(self.update_item_new_line_function)
         self.getfoundhooksignal.connect(self.getfoundhook)
         self.setWindowTitleWithVersion("选择文本")
         self.changeprocessclear()
+
+    def __consoleoutput(self, sentence):
+        self.textbrowappendandmovetoend(
+            self.sysOutput, get_time_stamp() + " " + sentence
+        )
 
     def querykeyofrow(self, row):
         if isinstance(row, QModelIndex):
@@ -472,6 +477,7 @@ class hookselect(closeashidewindow):
             self.getnewsentence(output)
         output = output[:200].replace("\n", " ")
         colidx = 2 + int(bool(self.embedablenum))
+        self.tttable.setRowHidden(row, False)
         self.ttCombomodelmodel.item(row, colidx).setText(output)
 
     def removehook(self, key):
@@ -553,7 +559,8 @@ class hookselect(closeashidewindow):
 
         self.tttable.setIndexWidget(self.ttCombomodelmodel.index(rown, 0), selectbutton)
         if isembedable:
-            checkbtn = MySwitch(sign=self._check_tp_using(key))
+            embed = self._check_tp_using(key)
+            checkbtn = MySwitch(sign=embed)
 
             checkbtn.clicked.connect(functools.partial(self._embedbtnfn, key))
 
@@ -564,8 +571,12 @@ class hookselect(closeashidewindow):
             if self.embedselectall.get(hc, False):
                 checkbtn.click()
 
+            if embed:
+                self.on_check_unity_font()
         if select and self.tttable.currentIndex() == -1:
             self.tttable.setCurrentIndex(rown)
+
+        self.tttable.setRowHidden(rown, True)
 
     def _check_tp_using(self, key):
         hc, hn, tp = key
@@ -584,9 +595,38 @@ class hookselect(closeashidewindow):
                 pass
         return _isusing
 
+    def resolve_unity_font_dir(self):
+        ts = self.textsource
+        if ts is None:
+            return
+        if ts.engine.lower() != "unity" or not ts.embedconfig.get("changefont", False):
+            return
+        if self._unityfont_resolving:
+            return
+        self._unityfont_resolving = True
+        try:
+            d = ts.find_unity_font_dir()
+            if not d:
+                dlg = UnityFontDownloadDialog(self)
+                dlg.exec()
+        except:
+            print_exc()
+
+    def on_check_unity_font(self):
+        def __():
+            self.resolve_unity_font_dir()
+            try:
+                self.textsource.set_settings_ex()
+            except:
+                pass
+
+        threader(gobject.base.safeinvokefunction.emit)(__)
+
     def _embedbtnfn(self, key, use):
         hc, hn, tp = key
         self.textsource.Luna_UseEmbed(tp, use)
+        if use:
+            self.on_check_unity_font()
         _use = self._check_tp_using(key)
         if "embedablehook" not in savehook_new_data[gobject.base.gameuid]:
             savehook_new_data[gobject.base.gameuid]["embedablehook"] = []
@@ -669,12 +709,12 @@ class hookselect(closeashidewindow):
         self.userhook = QLineEdit()
         self.searchtextlayout.addWidget(self.userhook)
         self.userhook.returnPressed.connect(self.inserthook)
-        userhookinsert = getIconButton(icon='fa.plus', callback=self.inserthook)
+        userhookinsert = getIconButton(icon="fa.plus", callback=self.inserthook, tips="插入")
         self.searchtextlayout.addWidget(userhookinsert)
 
         self.searchtextlayout.addWidget(D_getdoclink("hooksettings.html#特殊码格式")())
 
-        self.userhookfind = getIconButton(icon='fa.search', callback=self.findhook)
+        self.userhookfind = getIconButton(icon="fa.search", callback=self.findhook, tips="搜索")
         self.searchtextlayout.addWidget(self.userhookfind)
         self.searchtextlayout.addWidget(__)
 
@@ -723,6 +763,7 @@ class hookselect(closeashidewindow):
         self.tabwidget.addTab(self.textOutput, ("文本"))
         self.tabwidget.addTab(self.sysOutput, ("日志"))
         self.tabwidget.setCurrentIndex(1)
+        self._unityfont_resolving = False
 
     def parse_hook_menu(self, index: QModelIndex):
         _ = self.querykeyofrow(index)
@@ -794,13 +835,15 @@ class hookselect(closeashidewindow):
 
     def opensolvetext(self):
         try:
-            dialog_setting_game(self, gobject.base.gameuid, 3)
+            if gobject.base.gameuid:
+                dialog_setting_game(self, gobject.base.gameuid, 3)
         except:
             print_exc()
 
     def opengamesetting(self):
         try:
-            dialog_setting_game(self, gobject.base.gameuid, 1)
+            if gobject.base.gameuid:
+                dialog_setting_game(self, gobject.base.gameuid, 1)
         except:
             print_exc()
 
@@ -901,32 +944,63 @@ class hookselect(closeashidewindow):
             self.getnewsentence(_TR("！未选定进程！"))
 
     def getfoundhook(self, hooks):
+        if len(hooks) == 0:
+            return
 
         searchtext = self.searchtext2.text()
 
+        # 先只算数据，最后一次性批量更新UI：
+        # 逐行 insertRow/setItem/setRowHidden 交错执行会让视图反复重排全部行，行数多时是 O(K²)
+        rowstart = self.ttCombomodelmodel2.rowCount()
+        rowof = {hc: row for row, hc in enumerate(self.allres)}
+        newrows = []  # (hookcode, 显示文本, 是否隐藏)
+        rowupdates = []  # (行号, 显示文本, 是否隐藏)
         for hookcode in hooks:
             string = hooks[hookcode][-1]
-            if hookcode not in self.allres:
-                self.allres[hookcode] = hooks[hookcode].copy()
-                self.ttCombomodelmodel2.insertRow(
-                    self.ttCombomodelmodel2.rowCount(),
-                    [QStandardItem(hookcode), QStandardItem(string[:100])],
-                )
-            else:
+            if hookcode in rowof:
                 self.allres[hookcode] += hooks[hookcode].copy()
-                self.ttCombomodelmodel2.setItem(
-                    list(self.allres.keys()).index(hookcode),
-                    1,
-                    QStandardItem(string[:100]),
-                )
-
+            else:
+                self.allres[hookcode] = hooks[hookcode].copy()
             resbatch = self.allres[hookcode]
             hide = all(
-                [(searchtext not in res) or self.gethide(res) for res in resbatch]
+                (searchtext not in res) or self.gethide(res) for res in resbatch
             )
-            self.tttable2.setRowHidden(list(self.allres.keys()).index(hookcode), hide)
-        if len(hooks) == 0:
-            return
+            if hookcode in rowof:
+                rowupdates.append((rowof[hookcode], string[:100], hide))
+            else:
+                newrows.append((hookcode, string[:100], hide))
+
+        self.tttable2.setUpdatesEnabled(False)
+        try:
+            model = self.ttCombomodelmodel2
+            if newrows:
+                if model.columnCount() < 2:
+                    model.setColumnCount(2)
+                model.insertRows(rowstart, len(newrows))
+            # 屏蔽信号批量写入，最后补发一次 dataChanged，避免每个条目都触发视图更新
+            model.blockSignals(True)
+            try:
+                for i, (hookcode, text, _) in enumerate(newrows):
+                    model.setItem(rowstart + i, 0, QStandardItem(hookcode))
+                    model.setItem(rowstart + i, 1, QStandardItem(text))
+                for row, text, _ in rowupdates:
+                    model.setItem(row, 1, QStandardItem(text))
+            finally:
+                model.blockSignals(False)
+            if model.rowCount() and model.columnCount():
+                model.dataChanged.emit(
+                    model.index(0, 0),
+                    model.index(model.rowCount() - 1, model.columnCount() - 1),
+                )
+            # 行的显示/隐藏放在所有模型操作之后
+            for i, (_, _, hide) in enumerate(newrows):
+                if hide:
+                    self.tttable2.setRowHidden(rowstart + i, True)
+            for row, _, hide in rowupdates:
+                if self.tttable2.isRowHidden(row) != hide:
+                    self.tttable2.setRowHidden(row, hide)
+        finally:
+            self.tttable2.setUpdatesEnabled(True)
         self.hidesearchhookbuttons(False)
 
     def accept(self, key, select):
@@ -988,38 +1062,6 @@ class hookselect(closeashidewindow):
         )
         if atBottom:
             scrollbar.setValue(scrollbar.maximum())
-
-    def sysmessage(self, info, sentence):
-        if info == HOSTINFO.Console:
-            self.textbrowappendandmovetoend(
-                self.sysOutput, get_time_stamp() + " " + sentence
-            )
-        elif info in (HOSTINFO.Warning, HOSTINFO.EmuWarning):
-            app = (
-                ""
-                if info == HOSTINFO.Warning
-                else '\n<a href="{}">{}</a>'.format(
-                    dynamiclink("emugames.html", docs=True), _TR("使用说明")
-                )
-            )
-            RichMessageBox(
-                self,
-                _TR("警告"),
-                sentence + app,
-                iserror=False,
-                iswarning=True,
-            )
-        elif info == HOSTINFO.EmuConnected:
-            sentence = _TR(
-                "检测到模拟器: {}\n请在模拟器加载游戏之前，先让翻译器HOOK模拟器，否则将无法识别模拟器内加载的游戏"
-            ).format(sentence)
-            gobject.base.translation_ui.showMarkDownSig.emit(
-                "{}\n[{}]({})".format(
-                    sentence,
-                    _TR("使用说明"),
-                    dynamiclink("emugames.html", docs=True),
-                )
-            )
 
     def getnewsentence(self, sentence):
         self.textbrowappendandmovetoend(self.textOutput, sentence)

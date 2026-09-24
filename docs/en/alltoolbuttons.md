@@ -62,7 +62,7 @@ Some buttons have two icons to indicate two different states. Some buttons only 
 
     When the toolbar is not locked, if `Mouse Through Window` is activated, the toolbar will only be displayed when the mouse moves to the **area of the Mouse Through Window button and one button to the left and right**; otherwise, as long as the mouse enters the translation window, the toolbar will be displayed.
 
-    If the window effect (Aero/Arylic) is currently used and the toolbar is not locked, the toolbar will be in the area above the text area on the z-axis, not on the y-axis above the text area. This is because due to Windows, when using the window effect, if the toolbar is only hidden instead of reducing its window height, the hidden toolbar will still be rendered with the acrylic/Aero background, resulting in a blank area where the toolbar is located.
+    If the window effect (Aero/Acrylic) is currently used and the toolbar is not locked, the toolbar will be in the area above the text area on the z-axis, not on the y-axis above the text area. This is because due to Windows, when using the window effect, if the toolbar is only hidden instead of reducing its window height, the hidden toolbar will still be rendered with the acrylic/Aero background, resulting in a blank area where the toolbar is located.
 1. #### <i class="fa fa-link"></i> <i class="fa fa-icon fa-rotate-right"></i> Select Game {#anchor-selectgame}
     **This button is only available in HOOK mode**
 
@@ -112,12 +112,14 @@ Some buttons have two icons to indicate two different states. Some buttons only 
 1. #### <i class="fa fa-compress"></i> <i class="fa fa-expand"></i> Window Zoom {#anchor-fullscreen}
     You can scale the game window with one click using the built-in Magpie.
 
-    Left-click for windowed scaling, and right-click for full-screen scaling.
+    By default, left-click is windowed scaling and right-click is full-screen scaling. The left and right click functions can be swapped in settings.
 
 1. #### <i class="fa fa-camera"></i> <i class="fa fa-icon fa-rotate-right"></i> Window Screenshot {#anchor-grabwindow}
-    After binding the game window, you can take screenshots of the bound window (by default, two screenshots will be taken: GDI and Winrt, both of which may fail). If Magpie scaling is currently in use, it will also capture the magnified window.
+    If Magpie scaling is currently in use, it will capture the magnified window.
 
-    When left clicked, the screenshot will be saved to a file, and when right clicked, the screenshot will be saved to the clipboard. The middle key opens the in-game overlay.
+    After binding the game window, you can take screenshots of the bound window. It first attempts a GDI capture, and falls back to Windows.Capture if that fails.
+
+    By default, left-click saves the screenshot to a file, and right-click saves it to the clipboard. The left and right click functions can be swapped in settings. The middle key opens the in-game overlay.
 
 1. #### <i class="fa fa-volume-off"></i> <i class="btnstatus2 fa fa-volume-up"></i> Mute Game {#anchor-muteprocess}
     After binding the game window, you can mute the game with one click, saving the trouble of muting the game in the system volume mixer.
@@ -165,7 +167,7 @@ Some buttons have two icons to indicate two different states. Some buttons only 
     In HOOK mode, it will automatically bind the game window according to the connected game, but you can also use this button to re-select other windows.
 
     In OCR mode, after binding the window, it also allows the OCR area and range box to move automatically in sync with the movement of the game window.
-    In OCR/Clipboard model, after binding the window, you can also link to the current game's game settings like in HOOK mode, to use the current game's dedicated translation optimization dictionary, etc.
+    In OCR/Clipboard mode, after binding the window, you can also link to the current game's game settings like in HOOK mode, to use the current game's dedicated translation optimization dictionary, etc.
 
 1. #### <i class="fa fa-neuter"></i> <i class="btnstatus2 fa fa-neuter"></i> Window Always On Top {#anchor-keepontop}
     Cancel/Always on Top translation window

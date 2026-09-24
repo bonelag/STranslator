@@ -1,13 +1,15 @@
 import os, time
 import codecs, hashlib, shutil
 import socket, gobject, uuid, functools
-import importlib, json, requests
+from collections import OrderedDict
+import importlib, json, requests, subprocess, windows
 from qtsymbols import *
 from traceback import print_exc
 from myutils.config import (
     _TR,
     dynamiclink,
     globalconfig,
+    ui_settings,
     static_data,
     getlanguse,
     uid2gamepath,
@@ -111,6 +113,27 @@ def translate_exits(fanyi, only_copy=False):
         return "copyed." + fanyi
 
 
+def __cishu_exits(cishu):
+    _fs = [
+        "LunaTranslator/cishu/{}.py".format(cishu),
+        gobject.getconfig("copyed/{}.py".format(cishu)),
+    ]
+    for i, _ in enumerate(_fs):
+        if os.path.exists(_):
+            return i
+    return None
+
+
+def cishuexits(cishu, only_copy=False):
+    _ = __cishu_exits(cishu)
+    if _ is None:
+        return None
+    if _ == 0 and (not only_copy):
+        return "cishu." + cishu
+    elif _ == 1:
+        return "copyed." + cishu
+
+
 def useExCheck(fanyi, which=None, key="fanyi"):
     # 当且仅当 useEx 调用并返回 False 时返回 False
     useExfunction = globalconfig[key][fanyi].get("useEx")
@@ -126,7 +149,6 @@ def useExCheck(fanyi, which=None, key="fanyi"):
             if not getattr(module, useExfunction)():
                 return False
     except:
-        print_exc()
         pass
     return True
 
@@ -160,7 +182,9 @@ def __fucklang(src, _) -> Languages:
 
 
 def getlangsrc() -> Languages:
-    return __fucklang(True, __internal__getlang("private_srclang_2", "srclang4", "auto"))
+    return __fucklang(
+        True, __internal__getlang("private_srclang_2", "srclang4", "auto")
+    )
 
 
 def getlangtgt() -> Languages:
@@ -220,13 +244,16 @@ def simplehtmlparser_all(text: str, tag: str, sign: str) -> "list[str]":
             break
         text = text[idx:]
         inner = findenclose(text, tag)
+        if not inner:
+            text = text[len(sign) :] if len(sign) else text[1:]
+            continue
         inners.append(inner.replace("\n", ""))
-        text = text[len(inners) :]
+        text = text[len(inner) :]
     return inners
 
 
 def nowisdark() -> bool:
-    dl = globalconfig.get("darklight2", 0)
+    dl = ui_settings.get("darklight2", 0)
     if dl == 1:
         dark = False
     elif dl == 2:
@@ -449,6 +476,29 @@ def is_port_listening(host, port):
         return False
 
 
+def checkportavailable(port):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        sock.bind(("localhost", port))
+        return True
+    except OSError:
+        return False
+    finally:
+        sock.close()
+
+
+def get_free_port(host="127.0.0.1", sock_type=socket.SOCK_STREAM):
+    with socket.socket(socket.AF_INET, sock_type) as s:
+        s.bind((host, 0))
+        return s.getsockname()[1]
+
+
+def str2rgba(string, alpha100):
+    c = QColor(string)
+    c.setAlphaF(alpha100 / 100)
+    return c.name(QColor.NameFormat.HexArgb)
+
+
 def stringfyerror(e: "Exception|str"):
     if isinstance(e, str):
         return e
@@ -466,7 +516,7 @@ def stringfyerror(e: "Exception|str"):
 
     if isinstance(e, requests.exceptions.RequestException):
         error = _TR("网络错误") + ": " + error
-        if e.proxy:
+        if ("proxy" in dir(e)) and e.proxy:
             try:
                 hostname, port = e.proxy.split(":")
                 if not is_port_listening(hostname, int(port)):
@@ -476,17 +526,6 @@ def stringfyerror(e: "Exception|str"):
             except:
                 print_exc()
     return error
-
-
-def checkportavailable(port):
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        sock.bind(("localhost", port))
-        return True
-    except OSError:
-        return False
-    finally:
-        sock.close()
 
 
 def splittranslatortypes():
@@ -593,7 +632,7 @@ def case_insensitive_replace(text: str, old: str, new: str) -> str:
 @tryprint
 def parsemayberegexreplace(lst: "list[dict]", line: str) -> str:
     if not line:
-        line = ""
+        return ""
     for fil in lst:
         key = fil.get("key", "")
         if not key:
@@ -759,10 +798,9 @@ def get_time_stamp(ct=None, ms=True, forfilename=False):
 
 class LRUCache:
     def __init__(self, capacity: int):
-        self.cache = {}
+        self.cache = OrderedDict()
         self.Lock = threading.Lock()
         self.capacity = capacity
-        self.order = []
 
     def setcap(self, cap):
         with self.Lock:
@@ -774,8 +812,7 @@ class LRUCache:
 
     def __get(self, key):
         if key in self.cache:
-            self.order.remove(key)
-            self.order.append(key)
+            self.cache.move_to_end(key)
             return self.cache[key]
         return None
 
@@ -787,12 +824,10 @@ class LRUCache:
         if not self.capacity:
             return
         if key in self.cache:
-            self.order.remove(key)
-        elif len(self.order) == self.capacity:
-            old_key = self.order.pop(0)
-            del self.cache[old_key]
+            self.cache.move_to_end(key)
+        elif len(self.cache) == self.capacity:
+            self.cache.popitem(last=False)
         self.cache[key] = value
-        self.order.append(key)
 
     def put(self, key, value=True) -> None:
         with self.Lock:
@@ -870,6 +905,80 @@ class loopbackrecorder:
         return file
 
 
+def subprochiderun(
+    cmd: "str|list[str]",
+    cwd=None,
+    encoding="utf8",
+    run=True,
+    env=None,
+    stdin=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    stdout=subprocess.PIPE,
+) -> "subprocess.CompletedProcess|subprocess.Popen":
+
+    startupinfo = subprocess.STARTUPINFO()
+    startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+    startupinfo.wShowWindow = subprocess.SW_HIDE
+
+    ss = (subprocess.run if run else subprocess.Popen)(
+        cmd,
+        cwd=cwd,
+        stdout=stdout,
+        stderr=stderr,
+        stdin=stdin,
+        startupinfo=startupinfo,
+        encoding=encoding,
+        env=env,
+    )
+
+    return ss
+
+
+def ffmpeg_record(sema: threading.Semaphore, rect: QRect = None, split=False):
+    ffmpeg = shutil.which("ffmpeg")
+    if not ffmpeg:
+        raise Exception("can't find ffmpeg")
+    file = gobject.gettempdir(str(time.time()) + (".avif" if split else ".mp4"))
+    if rect:
+        arg = "-offset_x {} -offset_y {} -video_size {}x{} -i desktop ".format(
+            rect.x(), rect.y(), rect.width(), rect.height()
+        )
+    else:
+        title = windows.GetWindowText(gobject.base.hwnd)
+        if not title:
+            raise Exception("window title is none")
+        arg = '-i title="{}"'.format(title)
+
+    codecarg = "-c:v libsvtav1" if split else ""
+    proc = subprochiderun(
+        r'''"{}" -f gdigrab -framerate 30 -draw_mouse 0 {} {} "{}"'''.format(
+            ffmpeg, arg, codecarg, file
+        ),
+        run=False,
+        stdout=None,
+        stderr=None,
+    )
+    h = NativeUtils.AutoKillProcess(proc.pid)
+    recorders = loopbackrecorder()
+    sema.acquire()
+    proc.stdin.write("q")
+    proc.stdin.flush()
+    proc.wait()
+    mp3 = recorders.stop_save()
+    if split:
+        return file, mp3
+    else:
+        tmsp = gobject.gettempdir(
+            get_time_stamp(forfilename=True).replace(" ", "_") + ".mp4"
+        )
+        subprochiderun(
+            r'''"{}" -i {} -i {} -c:v copy -c:a aac -map 0:v:0 -map 1:a:0 "{}"'''.format(
+                ffmpeg, file, mp3, tmsp
+            )
+        )
+        return tmsp
+
+
 def copytree(src, dst, copy_function=shutil.copy2):
     names = os.listdir(src)
 
@@ -920,10 +1029,13 @@ class APIType:
     class aliyuncs(openai):
         pass
 
-    class cohere:
+    class cohere(openai):
         pass
 
-    class mistral:
+    class mistral(openai):
+        pass
+
+    class zhipuocr:
         pass
 
     def __eq__(self, value):
@@ -949,14 +1061,18 @@ class APIType:
             self._value_ = APIType.cohere
         elif url.startswith("https://api.mistral.ai"):
             self._value_ = APIType.mistral
+        elif url == "https://open.bigmodel.cn/api/paas/v4/files/ocr":
+            self._value_ = APIType.zhipuocr
         else:
             self._value_ = APIType.openai
 
     def finalurl(self, checkend="/chat/completions"):
         if self == APIType.azure:
-            return url
+            return self.url
         if self == APIType.gemini:
-            return self.url + "/v1beta/models"
+            return self.url
+        if self == APIType.zhipuocr:
+            return self.url
         url = self.url
         if url.endswith(checkend):
             return url
@@ -1027,6 +1143,8 @@ def common_list_models(
         return parsecoheremodellist(proxies, apikey)
     elif apitype == APIType.gemini:
         return parsegeminimodellist(apitype, proxies, apikey)
+    elif apitype == APIType.zhipuocr:
+        return ["ocr"]
     elif apitype == APIType.claude:
         return parseclaudemodellist(proxies, apikey)
     params = dict(headers={"Authorization": "Bearer {}".format(apikey)})
@@ -1046,15 +1164,15 @@ def common_list_models(
 
 
 def common_create_gpt_data(config: dict, message, extrabody):
-    temperature = config["Temperature"]
 
     data = dict(
         model=config["model"],
         messages=message,
         # n=1,
         # stop=None,
-        temperature=temperature,
     )
+    if config.get("Temperature.use", True):
+        data.update(temperature=config["Temperature"])
     use_max_completion_tokens = config.get("use_max_completion_tokens", False)
     key_tokens = ("max_tokens", "max_completion_tokens")[use_max_completion_tokens]
     data.update({key_tokens: config["max_tokens"]})
@@ -1086,10 +1204,11 @@ def common_create_gemini_request(
     apitype: APIType,
 ):
     gen_config = {
-        "temperature": config["Temperature"],
         "maxOutputTokens": config["max_tokens"],
         "topP": config["top_p"],
     }
+    if config.get("Temperature.use", True):
+        gen_config.update(temperature=config["Temperature"])
     if config.get("frequency_penalty_use", False):
         gen_config.update(frequencyPenalty=config["frequency_penalty"])
     if config.get("reasoning_effort_use", False):
@@ -1349,17 +1468,14 @@ def inrange(n, s, e):
 
 
 def inranges(n, *argc):
-    for s, e in argc:
-        if inrange(n, s, e):
-            return True
-    return False
+    return any(inrange(n, s, e) for s, e in argc)
 
 
 def cinranges(n, *argc):
     return inranges(ord(n), *argc)
 
 
-def is_ascii_symbo(c: str):
+def is_ascii_symbol(c: str):
     return cinranges(c, (0x21, 0x2F), (0x3A, 0x40), (0x5B, 0x60), (0x7B, 0x7E))
 
 

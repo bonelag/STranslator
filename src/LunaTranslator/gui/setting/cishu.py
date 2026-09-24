@@ -1,7 +1,7 @@
 from qtsymbols import *
 import functools, os
 import gobject
-from myutils.utils import splitocrtypes, dynamiccishuname, selectdebugfile
+from myutils.utils import splitocrtypes, dynamiccishuname, selectdebugfile, cishuexits
 from myutils.config import globalconfig, _TR
 from myutils.wrapper import Singleton
 from gui.inputdialog import autoinitdialog_items, autoinitdialog
@@ -14,9 +14,9 @@ from gui.usefulwidget import (
     listediter,
     D_getIconButton,
     LPushButton,
-    D_getspinbox,
+    NQGroupBox,
     getsmalllabel,
-    getcenterX,
+    D_getdoclink,
     D_getcolorbutton,
     MyInputDialog,
     getboxlayout,
@@ -24,22 +24,28 @@ from gui.usefulwidget import (
     D_getsimplecombobox,
     getspinbox,
     ClickableLabel,
-    getcolorbutton,
+    ColorButton,
     KeySequenceEdit,
     check_grid_append,
+    automakegrid,
+    request_delete_ok,
     DarkLightAutoResetIconHelper,
+    FocusFontCombo,
+    getIconSwitch,
+    clearlayout,
 )
 import qtawesome
 from gui.dynalang import LFormLayout, LLabel, LAction, LDialog
 from gui.rendertext.tooltipswidget import tooltipssetting
 from gui.showword import cishusX
+from gui.setting.cishucommunity import CommunityCishuDialog
 
 
 @Singleton
 class multicolorset(LDialog, DarkLightAutoResetIconHelper):
     def __init__(self, parent) -> None:
         super().__init__(parent, Qt.WindowType.WindowCloseButtonHint)
-        self.setWindowTitle("颜色设置")
+        self.setWindowTitle("语法加亮_颜色设置")
         self.setWindowIcon(qtawesome.icon("fa.paint-brush"))
         self.resize(QSize(300, 10))
         formLayout = LFormLayout(self)  # 配置layout
@@ -76,7 +82,7 @@ class multicolorset(LDialog, DarkLightAutoResetIconHelper):
                 callback=gobject.base.translation_ui.translate_text.setcolorstyle,
             )
 
-            p = getcolorbutton(
+            p = ColorButton(
                 self,
                 globalconfig["cixingcolor"],
                 k,
@@ -92,6 +98,7 @@ class multicolorset(LDialog, DarkLightAutoResetIconHelper):
 def setTabcishu(self, basel):
     makescrollgrid(setTabcishu_l(self), basel)
     gobject.base.fenyinsettings.connect(self.fenyinsettings.setEnabled)
+    gobject.base.fencisettings.connect(self.fencisettings.setEnabled)
 
 
 def vistranslate_rank(self):
@@ -103,6 +110,35 @@ def vistranslate_rank(self):
         namemapfunction=lambda k: _TR(dynamiccishuname(k)),
         exec=True,
     )
+
+
+def rebuildcishugrid(self):
+    layout = getattr(self, "cishugridinternal", None)
+    if layout is None:
+        return
+    clearlayout(layout)
+    _, online = splitocrtypes(globalconfig["cishu"])
+    automakegrid(layout, initinternal(self, online))
+
+
+def deletecishu(self, apiuid):
+    if not request_delete_ok(self, "99e3f96f-8659-457f-9e0b-52643f552889"):
+        return
+    _f = gobject.getconfig("copyed/{}.py".format(apiuid))
+    try:
+        os.remove(_f)
+    except:
+        pass
+    try:
+        globalconfig["cishu"][apiuid]["use"] = False
+    except:
+        pass
+    try:
+        gobject.base.cishus.pop(apiuid)
+    except:
+        pass
+    globalconfig["cishu"].pop(apiuid, None)
+    rebuildcishugrid(self)
 
 
 def renameapi(qlabel: QLabel, apiuid, self, _=None):
@@ -117,6 +153,10 @@ def renameapi(qlabel: QLabel, apiuid, self, _=None):
         menu.addSeparator()
         menu.addAction(useproxy)
         useproxy.setChecked(globalconfig["cishu"][apiuid].get("useproxy", True))
+    delete = LAction("删除", menu)
+    if cishuexits(apiuid, only_copy=True):
+        menu.addSeparator()
+        menu.addAction(delete)
     action = menu.exec(QCursor.pos())
 
     if action == editname:
@@ -132,6 +172,9 @@ def renameapi(qlabel: QLabel, apiuid, self, _=None):
     elif action == useproxy:
         globalconfig["cishu"][apiuid]["useproxy"] = useproxy.isChecked()
 
+    elif action == delete:
+        deletecishu(self, apiuid)
+
 
 def getrenameablellabel(uid, self):
     name = ClickableLabel(dynamiccishuname(uid))
@@ -145,8 +188,8 @@ def initinternal(self, names):
     line = []
     i = 0
     for cishu in names:
-        _f = "LunaTranslator/cishu/{}.py".format(cishu)
-        if os.path.exists(_f) == False:
+        which = cishuexits(cishu)
+        if not which:
             continue
         reloadcb = functools.partial(gobject.base.startxiaoxueguan, cishu)
         line += [
@@ -158,14 +201,14 @@ def initinternal(self, names):
             items = autoinitdialog_items(globalconfig["cishu"][cishu])
             items[-1]["callback"] = reloadcb
 
-            def __(cishu):
+            def __(cishu, _which=which):
                 autoinitdialog(
                     self,
                     globalconfig["cishu"][cishu]["args"],
                     dynamiccishuname(cishu),
                     800,
                     items,
-                    "cishu." + cishu,
+                    _which,
                     cishu,
                 )
 
@@ -189,7 +232,8 @@ def initinternal(self, names):
         i += 1
     if len(line):
         cishugrid.append(line)
-    cishugrid[-1] += [""] * (4 + 4 + 3 - len(cishugrid[-1]))
+    if cishugrid:
+        cishugrid[-1] += [""] * (4 + 4 + 3 - len(cishugrid[-1]))
     check_grid_append(cishugrid)
     return cishugrid
 
@@ -278,391 +322,404 @@ def mdictsettings(self):
     return box
 
 
+class fontsettings(NQGroupBox):
+
+    def createtextfontcom(self, key, df):
+        def _f(key, x):
+            globalconfig[key] = x
+            gobject.base.translation_ui.translate_text.setfontstyle()
+
+        font_comboBox = FocusFontCombo(sizeX=True)
+        font_comboBox.setCurrentFont(QFont(globalconfig.get(key, df)))
+        font_comboBox.currentTextChanged.connect(functools.partial(_f, key))
+        return font_comboBox
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        form = LFormLayout(self)
+        form.addRow(
+            "相对大小",
+            getspinbox(
+                0.1,
+                1,
+                globalconfig,
+                "kanarate",
+                double=True,
+                step=0.05,
+                callback=gobject.base.translation_ui.translate_text.setfontstyle,
+                default=0.5,
+            ),
+        )
+        form2 = VisLFormLayout()
+        form.addRow("字体", form2)
+        form2.addRow(
+            getboxlayout(
+                [
+                    getsmalllabel("跟随默认"),
+                    getsimpleswitch(
+                        globalconfig,
+                        "kanafontfollowdefault",
+                        default=True,
+                        callback=lambda x: (
+                            form2.setRowVisible(1, not x),
+                            gobject.base.translation_ui.translate_text.setfontstyle(),
+                        ),
+                    ),
+                    "",
+                ]
+            )
+        )
+        form2.addRow(
+            getboxlayout(
+                [
+                    self.createtextfontcom(
+                        "kanafont",
+                        globalconfig.get(
+                            "fonttype", gobject.tempconfig.get("fonttype", "")
+                        ),
+                    ),
+                    getIconSwitch(
+                        globalconfig,
+                        "kanabold",
+                        callback=gobject.base.translation_ui.translate_text.setfontstyle,
+                        tips="加粗",
+                        default=globalconfig.get("showbold", False),
+                        icon="fa.bold",
+                    ),
+                    getIconSwitch(
+                        globalconfig,
+                        "kanaitalic",
+                        callback=gobject.base.translation_ui.translate_text.setfontstyle,
+                        tips="倾斜",
+                        default=globalconfig.get("showitalic", False),
+                        icon="fa.italic",
+                    ),
+                ]
+            ),
+        )
+        form2.setRowVisible(1, not globalconfig.get("kanafontfollowdefault", True))
+
+
+def _opencommunitycishu(self):
+    dlg = getattr(self, "_communitycishudlg", None)
+    if dlg is not None and dlg.isVisible():
+        dlg.raise_()
+        dlg.activateWindow()
+        return
+    self._communitycishudlg = CommunityCishuDialog(
+        self, oninstalled=functools.partial(rebuildcishugrid, self)
+    )
+
+
+def _headercishubuttons(self):
+    w = QWidget()
+    lay = QHBoxLayout(w)
+    lay.setContentsMargins(0, 0, 0, 0)
+    btns = [D_getdoclink("internaldict.html")()]
+    for b in btns:
+        lay.addWidget(b)
+
+    def _refit(*_):
+        w.setFixedSize(lay.sizeHint())
+
+    for b in btns:
+        b.sizeChanged.connect(_refit)
+    _refit()
+    return w
+
+
 def setTabcishu_l(self):
 
     grids_1 = [functools.partial(fenciqisettings, self)]
     _, online = splitocrtypes(globalconfig["cishu"])
-    grids2 = [
-        dict(
-            title="辞书",
-            type="grid",
-            grid=[
-                [
-                    getsmalllabel("查词"),
-                    D_getIconButton(
-                        lambda: gobject.base.searchwordW.showsignal.emit(),
-                        icon="fa.search",
-                        tips="查词",
-                    ),
-                    getsmalllabel(""),
-                    getsmalllabel("辞书显示顺序"),
-                    D_getIconButton(functools.partial(vistranslate_rank, self)),
-                    "",
-                ],
-                [(functools.partial(mdictsettings, self), 0)],
-                [
-                    dict(
-                        title="在线",
-                        type="grid",
-                        grid=initinternal(self, online),
-                    )
-                ],
+    cishu = dict(
+        title="辞书",
+        widget=functools.partial(_headercishubuttons, self),
+        type="grid",
+        grid=[
+            [(functools.partial(mdictsettings, self), 0)],
+            [
+                dict(
+                    title="在线",
+                    type="grid",
+                    parent=self,
+                    internallayoutname="cishugridinternal",
+                    grid=initinternal(self, online),
+                )
             ],
-        )
-    ]
+        ],
+    )
 
     def _getkeys(key):
-        class __(QDialog, DarkLightAutoResetIconHelper):
-            pass
-
-        dia = __(self)
-        dia.setWindowIcon(qtawesome.icon("fa.keyboard-o"))
-        dia.setWindowFlags(
-            dia.windowFlags() & ~Qt.WindowType.WindowContextHelpButtonHint
-        )
-        l = QVBoxLayout(dia)
         edit = KeySequenceEdit(callonlymod=True)
         edit.setString(globalconfig["wordclickkbtrigger"].get(key, ""))
-        l.addWidget(edit)
-        dia.setWindowTitle(_TR("需要的键"))
-        button = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
+        edit.changeedvent.connect(
+            functools.partial(globalconfig["wordclickkbtrigger"].__setitem__, key)
         )
-        button.accepted.connect(dia.accept)
-        button.rejected.connect(dia.reject)
-        l.addWidget(button)
-        dia.resize(800, 10)
-        ok = dia.exec()
-        if ok:
-            globalconfig["wordclickkbtrigger"][key] = edit.string()
+        return edit
 
-    def _getlink():
-        listediter(
-            self,
-            "外部链接",
-            globalconfig["useopenlinklink1"],
-            exec=True,
-            icon="fa.link",
+    zhuyin = dict(
+        title="注音",
+        type="grid",
+        parent=self,
+        name="fenyinsettings",
+        enable=globalconfig.get("isshowrawtext", True),
+        hiderows=[1],
+        widget=D_getdoclink("qa1.html"),
+        grid=(
+            [
+                getsmalllabel("显示"),
+                D_getsimpleswitch(
+                    globalconfig,
+                    "isshowhira",
+                    callback=gobject.base.translation_ui.translate_text.showhidert,
+                    default=True,
+                ),
+                D_getcolorbutton(
+                    self,
+                    globalconfig,
+                    "jiamingcolor",
+                    callback=gobject.base.translation_ui.translate_text.setcolorstyle,
+                    tips="注音颜色",
+                    default="black",
+                ),
+                "",
+                getsmalllabel("日语注音方案"),
+                D_getsimplecombobox(
+                    [
+                        "平假名",
+                        "片假名",
+                        "罗马音",
+                    ],
+                    globalconfig,
+                    "hira_vis_type",
+                    callback=lambda _: gobject.base.translation_ui.translate_text.refreshcontent(),
+                    default=0,
+                ),
+                "",
+                getsmalllabel("字体"),
+                getIconSwitch(
+                    icon="fa.gear",
+                    checkablechangecolor=False,
+                    callback=lambda x: self.fenyinsettings.layout().setRowVisible(1, x),
+                ),
+            ],
+            [(functools.partial(fontsettings, self), 0)],
+        ),
+    )
+
+    def showhidebutton(idx):
+        return getIconSwitch(
+            icon="fa.gear",
+            checkablechangecolor=False,
+            callback=lambda x: self.triggerfuncs.layout().setRowVisible(idx, x),
         )
+
+    def manysettings(title, k, k2, extra=None, canhover=True):
+        grid = [
+            [
+                "触发方式",
+                D_getsimplecombobox(
+                    ["左键点击", "右键点击", "中键点击", "鼠标悬停"][
+                        : (4 if canhover else 3)
+                    ],
+                    globalconfig,
+                    k=k,
+                    internal=["left", "right", "mid", "hover"][
+                        : (4 if canhover else 3)
+                    ],
+                    default="left",
+                    callback=gobject.base.translation_ui.translate_text.showhideclick,
+                ),
+                "",
+                getsmalllabel("需要键盘按下"),
+                D_getsimpleswitch(
+                    globalconfig["wordclickkbtriggerneed"],
+                    k2,
+                    default=False,
+                ),
+                functools.partial(_getkeys, k2),
+            ],
+            [
+                "使用单词原型",
+                D_getsimpleswitch(
+                    globalconfig["usewordoriginfor"],
+                    k2,
+                    default=False,
+                ),
+            ],
+        ]
+        if extra:
+            grid[-1] += [getsmalllabel("")] + extra
+        grid[-1] += [""]
+        return dict(title=title, type="form", grid=grid)
+
+    triggerfuncs = [
+        [
+            "显示详细信息",
+            D_getsimpleswitch(
+                globalconfig,
+                "word_hover_show_word_info",
+                callback=lambda _: (
+                    gobject.base.translation_ui.translate_text.set_word_hover_show_word_info(
+                        _
+                    ),
+                    gobject.base.translation_ui.translate_text.showhideclick(_),
+                ),
+                default=False,
+            ),
+            functools.partial(showhidebutton, 2),
+            "",
+            "",
+            "复制到剪贴板",
+            D_getsimpleswitch(
+                globalconfig,
+                "usecopyword",
+                callback=gobject.base.translation_ui.translate_text.showhideclick,
+                default=False,
+            ),
+            functools.partial(showhidebutton, 3),
+            "",
+            "",
+            "",
+        ],
+        [
+            "查词",
+            D_getsimpleswitch(
+                globalconfig,
+                "usesearchword",
+                callback=gobject.base.translation_ui.translate_text.showhideclick,
+                default=True,
+            ),
+            functools.partial(showhidebutton, 4),
+            D_getIconButton(
+                lambda: gobject.base.searchwordW.showsignal.emit(),
+                icon="fa.search",
+                tips="查词",
+            ),
+            "",
+            "查词_在小窗口中",
+            D_getsimpleswitch(
+                globalconfig,
+                "usesearchword_S",
+                callback=gobject.base.translation_ui.translate_text.showhideclick,
+                default=False,
+            ),
+            functools.partial(showhidebutton, 5),
+        ],
+        [
+            dict(
+                title="显示详细信息",
+                type="form",
+                grid=[
+                    ["触发方式", "鼠标悬停"],
+                    [
+                        dict(
+                            title="样式",
+                            type="form",
+                            grid=tooltipssetting(self),
+                        )
+                    ],
+                ],
+            )
+        ],
+        [
+            manysettings(
+                "复制到剪贴板", "copyword_mousetrigger", "copyword", canhover=False
+            )
+        ],
+        [
+            manysettings(
+                "查词",
+                "searchword_mousetrigger",
+                "searchword",
+                [
+                    getsmalllabel("辞书显示顺序"),
+                    D_getIconButton(functools.partial(vistranslate_rank, self)),
+                ],
+                canhover=False,
+            )
+        ],
+        [
+            manysettings(
+                "查词_在小窗口中",
+                "searchword_S_mousetrigger",
+                "searchword_S",
+                [
+                    getsmalllabel("辞书显示顺序"),
+                    D_getIconButton(functools.partial(vistranslate_rank, self)),
+                    getsmalllabel(""),
+                    getsmalllabel("不使用的辞书"),
+                    D_getIconButton(
+                        callback=functools.partial(
+                            listediter,
+                            self,
+                            "不使用的辞书",
+                            globalconfig["ignoredict_S_hover"],
+                            candidates=cishusX(),
+                            namemapfunction=dynamiccishuname,
+                            exec=True,
+                        ),
+                        tips="不使用的辞书",
+                    ),
+                ],
+                canhover=True,
+            )
+        ],
+    ]
+
+    fenci = dict(
+        title="分词",
+        type="grid",
+        parent=self,
+        name="fencisettings",
+        enable=globalconfig.get("isshowrawtext", True),
+        grid=(
+            [
+                getsmalllabel("语法加亮"),
+                D_getsimpleswitch(
+                    globalconfig,
+                    "show_fenci",
+                    callback=lambda _: (
+                        gobject.base.translation_ui.translate_text.setcolorstyle(),
+                        gobject.base.translation_ui.translate_text.showhideclick(_),
+                    ),
+                    default=True,
+                ),
+                D_getIconButton(
+                    icon="fa.paint-brush",
+                    callback=lambda: multicolorset(self),
+                    tips="语法加亮_颜色设置",
+                ),
+                D_getcolorbutton(
+                    self,
+                    globalconfig,
+                    "hovercolor",
+                    callback=gobject.base.translation_ui.translate_text.sethovercolor,
+                    alpha=True,
+                    default="#80000000",
+                    tips="鼠标悬停_颜色设置",
+                ),
+                "",
+            ],
+            [
+                dict(
+                    title="触发功能",
+                    type="grid",
+                    parent=self,
+                    name="triggerfuncs",
+                    hiderows=[2, 3, 4, 5],
+                    grid=triggerfuncs,
+                )
+            ],
+        ),
+    )
 
     grids = [
         grids_1,
-        grids2,
+        [cishu],
         [],
-        [
-            dict(
-                title="分词_&&_注音",
-                type="grid",
-                parent=self,
-                name="fenyinsettings",
-                enable=globalconfig.get("isshowrawtext", True),
-                grid=(
-                    [
-                        "显示注音",
-                        D_getsimpleswitch(
-                            globalconfig,
-                            "isshowhira",
-                            callback=gobject.base.translation_ui.translate_text.showhidert,
-                            default=True,
-                        ),
-                        D_getcolorbutton(
-                            self,
-                            globalconfig,
-                            "jiamingcolor",
-                            callback=gobject.base.translation_ui.translate_text.setcolorstyle,
-                            tips="注音颜色",
-                        ),
-                        "",
-                        "字体相对大小",
-                        D_getspinbox(
-                            0.1,
-                            1,
-                            globalconfig,
-                            "kanarate",
-                            double=True,
-                            step=0.05,
-                            callback=gobject.base.translation_ui.translate_text.setfontstyle,
-                            default=0.5,
-                        ),
-                        "",
-                        "日语注音方案",
-                        D_getsimplecombobox(
-                            [
-                                "平假名",
-                                "片假名",
-                                "罗马音",
-                            ],
-                            globalconfig,
-                            "hira_vis_type",
-                            callback=lambda _: gobject.base.translation_ui.translate_text.refreshcontent(),
-                            default=0,
-                        ),
-                    ],
-                    [
-                        "语法加亮",
-                        D_getsimpleswitch(
-                            globalconfig,
-                            "show_fenci",
-                            callback=lambda _: (
-                                gobject.base.translation_ui.translate_text.setcolorstyle(),
-                                gobject.base.translation_ui.translate_text.showhideclick(
-                                    _
-                                ),
-                            ),
-                            default=True,
-                        ),
-                        D_getIconButton(
-                            icon="fa.paint-brush",
-                            callback=lambda: multicolorset(self),
-                            tips="语法加亮_颜色设置",
-                        ),
-                    ],
-                    [
-                        dict(
-                            title="鼠标悬停时",
-                            type="grid",
-                            button=D_getcolorbutton(
-                                self,
-                                globalconfig,
-                                "hovercolor",
-                                callback=gobject.base.translation_ui.translate_text.sethovercolor,
-                                alpha=True,
-                            ),
-                            grid=[
-                                [
-                                    "显示详细信息",
-                                    D_getsimpleswitch(
-                                        globalconfig,
-                                        "word_hover_show_word_info",
-                                        callback=lambda _: (
-                                            gobject.base.translation_ui.translate_text.set_word_hover_show_word_info(
-                                                _
-                                            ),
-                                            gobject.base.translation_ui.translate_text.showhideclick(
-                                                _
-                                            ),
-                                        ),
-                                        default=False,
-                                    ),
-                                    D_getIconButton(
-                                        callback=lambda: tooltipssetting(self),
-                                        tips="样式",
-                                    ),
-                                ],
-                                [
-                                    "查词_在小窗口中",
-                                    D_getsimpleswitch(
-                                        globalconfig,
-                                        "usesearchword_S_hover",
-                                        callback=gobject.base.translation_ui.translate_text.showhideclick,
-                                    ),
-                                    D_getIconButton(
-                                        callback=functools.partial(
-                                            listediter,
-                                            self,
-                                            "不使用的辞书",
-                                            globalconfig["ignoredict_S_hover"],
-                                            candidates=cishusX(),
-                                            namemapfunction=dynamiccishuname,
-                                            exec=True,
-                                        ),
-                                        tips="不使用的辞书",
-                                    ),
-                                    "",
-                                    "需要键盘按下",
-                                    D_getsimpleswitch(
-                                        globalconfig["wordclickkbtriggerneed"],
-                                        "searchword_S_hover",
-                                        default=False,
-                                    ),
-                                    D_getIconButton(
-                                        icon="fa.keyboard-o",
-                                        callback=functools.partial(
-                                            _getkeys, "searchword_S_hover"
-                                        ),
-                                        tips="需要的键",
-                                    ),
-                                    "",
-                                    "使用单词原型",
-                                    D_getsimpleswitch(
-                                        globalconfig["usewordoriginfor"],
-                                        "searchword_S_hover",
-                                        default=False,
-                                    ),
-                                ],
-                            ],
-                        )
-                    ],
-                    [
-                        dict(
-                            title="点击单词时",
-                            type="grid",
-                            grid=[
-                                [
-                                    "",
-                                    "",
-                                    "",
-                                    "",
-                                    getcenterX("需要键盘按下"),
-                                    "",
-                                    getcenterX("使用单词原型"),
-                                ],
-                                [
-                                    "查词",
-                                    D_getsimpleswitch(
-                                        globalconfig,
-                                        "usesearchword",
-                                        callback=gobject.base.translation_ui.translate_text.showhideclick,
-                                    ),
-                                    "",
-                                    "",
-                                    getboxlayout(
-                                        [
-                                            D_getsimpleswitch(
-                                                globalconfig["wordclickkbtriggerneed"],
-                                                "searchword",
-                                                default=False,
-                                            ),
-                                            D_getIconButton(
-                                                icon="fa.keyboard-o",
-                                                callback=functools.partial(
-                                                    _getkeys, "searchword"
-                                                ),
-                                                tips="需要的键",
-                                            ),
-                                        ]
-                                    ),
-                                    "",
-                                    getcenterX(
-                                        D_getsimpleswitch(
-                                            globalconfig["usewordoriginfor"],
-                                            "searchword",
-                                            default=False,
-                                        )
-                                    ),
-                                ],
-                                [
-                                    "查词_在小窗口中",
-                                    D_getsimpleswitch(
-                                        globalconfig,
-                                        "usesearchword_S",
-                                        callback=gobject.base.translation_ui.translate_text.showhideclick,
-                                    ),
-                                    D_getIconButton(
-                                        callback=functools.partial(
-                                            listediter,
-                                            self,
-                                            "不使用的辞书",
-                                            globalconfig["ignoredict_S_click"],
-                                            candidates=cishusX(),
-                                            namemapfunction=dynamiccishuname,
-                                            exec=True,
-                                        ),
-                                        tips="不使用的辞书",
-                                    ),
-                                    "",
-                                    getboxlayout(
-                                        [
-                                            D_getsimpleswitch(
-                                                globalconfig["wordclickkbtriggerneed"],
-                                                "searchword_S",
-                                                default=False,
-                                            ),
-                                            D_getIconButton(
-                                                icon="fa.keyboard-o",
-                                                callback=functools.partial(
-                                                    _getkeys, "searchword_S"
-                                                ),
-                                                tips="需要的键",
-                                            ),
-                                        ]
-                                    ),
-                                    "",
-                                    getcenterX(
-                                        D_getsimpleswitch(
-                                            globalconfig["usewordoriginfor"],
-                                            "searchword_S",
-                                            default=False,
-                                        )
-                                    ),
-                                ],
-                                [
-                                    "复制到剪贴板",
-                                    D_getsimpleswitch(
-                                        globalconfig,
-                                        "usecopyword",
-                                        callback=gobject.base.translation_ui.translate_text.showhideclick,
-                                    ),
-                                    "",
-                                    "",
-                                    getboxlayout(
-                                        [
-                                            D_getsimpleswitch(
-                                                globalconfig["wordclickkbtriggerneed"],
-                                                "copyword",
-                                                default=False,
-                                            ),
-                                            D_getIconButton(
-                                                icon="fa.keyboard-o",
-                                                callback=functools.partial(
-                                                    _getkeys, "copyword"
-                                                ),
-                                                tips="需要的键",
-                                            ),
-                                        ]
-                                    ),
-                                    "",
-                                    getcenterX(
-                                        D_getsimpleswitch(
-                                            globalconfig["usewordoriginfor"],
-                                            "copyword",
-                                            default=False,
-                                        )
-                                    ),
-                                ],
-                                [
-                                    "打开外部链接",
-                                    D_getsimpleswitch(
-                                        globalconfig,
-                                        "useopenlink",
-                                        callback=gobject.base.translation_ui.translate_text.showhideclick,
-                                    ),
-                                    D_getIconButton(
-                                        icon="fa.link",
-                                        callback=_getlink,
-                                        tips="外部链接",
-                                    ),
-                                    "",
-                                    getboxlayout(
-                                        [
-                                            D_getsimpleswitch(
-                                                globalconfig["wordclickkbtriggerneed"],
-                                                "openlink",
-                                                default=False,
-                                            ),
-                                            D_getIconButton(
-                                                icon="fa.keyboard-o",
-                                                callback=functools.partial(
-                                                    _getkeys, "openlink"
-                                                ),
-                                                tips="需要的键",
-                                            ),
-                                        ]
-                                    ),
-                                    "",
-                                    getcenterX(
-                                        D_getsimpleswitch(
-                                            globalconfig["usewordoriginfor"],
-                                            "openlink",
-                                            default=False,
-                                        )
-                                    ),
-                                ],
-                            ],
-                        )
-                    ],
-                ),
-            ),
-        ],
+        [zhuyin],
+        [fenci],
     ]
     return grids

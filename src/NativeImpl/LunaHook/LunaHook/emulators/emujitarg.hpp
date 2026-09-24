@@ -342,7 +342,8 @@ namespace PCSX2Types
     }
 }
 #define PCSX2_REG_OFFSET(reg) (offsetof(__named_regs__, reg) / sizeof(GPR_reg))
-#define PCSX2_REG(reg) ((uintptr_t)eeMem->Main + ((DWORD *)(&(_cpuRegistersPack ? _cpuRegistersPack->cpuRegs.GPR : _cpuRegistersPack_old->cpuRegs.GPR).n.reg.UQ))[0])
+#define PCSX2_REG_EMU(reg) (((DWORD *)(&(_cpuRegistersPack ? _cpuRegistersPack->cpuRegs.GPR : _cpuRegistersPack_old->cpuRegs.GPR).n.reg.UQ))[0])
+#define PCSX2_REG(reg) (emu_addr(PCSX2_REG_EMU(reg)))
 
 namespace RPCS3
 {
@@ -444,7 +445,9 @@ namespace VITA3K
 #endif
 namespace PPSSPP
 {
+#ifndef _WIN64
     inline DWORD x86_baseaddr;
+#endif
     class emu_addr
     {
         hook_context *context;
@@ -457,6 +460,17 @@ namespace PPSSPP
 #ifndef _WIN64
             auto base = x86_baseaddr;
 #else
+            /*
+            #if PPSSPP_ARCH(AMD64)
+                // Two statically allocated registers.
+                MOV(64, R(MEMBASEREG), ImmPtr(Memory::base));
+                uintptr_t jitbase = (uintptr_t)GetBasePtr();
+                if (jitbase > 0x7FFFFFFFULL) {
+                    MOV(64, R(JITBASEREG), ImmPtr(GetBasePtr()));
+                    jo.reserveR15ForAsm = true;
+                }
+            #endif
+            */
             auto base = context->rbx;
 #endif
             return base + addr;

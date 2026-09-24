@@ -18,11 +18,7 @@ from ctypes import (
     c_uint64,
     c_int32,
     CFUNCTYPE,
-    Structure,
-    c_wchar,
-    sizeof,
 )
-import winreg
 from ctypes.wintypes import (
     WORD,
     HWND,
@@ -36,9 +32,11 @@ from ctypes.wintypes import (
     LPCWSTR,
     MAX_PATH,
 )
+from myutils.config import _TR
 from windows import AutoHandle
 from xml.sax.saxutils import escape
-import gobject, os, json
+import gobject, os, json, subprocess
+from gobject import unique_ptr
 import windows, functools, re, csv
 from traceback import print_exc
 
@@ -60,7 +58,7 @@ SuspendResumeProcess = utilsdll.SuspendResumeProcess
 SuspendResumeProcess.argtypes = (DWORD,)
 
 _SAPI_List = utilsdll.SAPI_List
-_SAPI_List.argtypes = (c_uint, c_void_p)
+_SAPI_List.argtypes = (c_void_p,)
 
 _SAPI_Speak = utilsdll.SAPI_Speak
 _SAPI_Speak.argtypes = (c_wchar_p, c_wchar_p, c_int, c_int, c_int, c_void_p)
@@ -69,13 +67,13 @@ _SAPI_Speak.restype = c_bool
 
 class SAPI:
     @staticmethod
-    def List(v):
+    def List():
         ret = []
 
         def __(ret: list, _id, name):
             ret.append((_id, name))
 
-        _SAPI_List(v, CFUNCTYPE(None, c_wchar_p, c_wchar_p)(functools.partial(__, ret)))
+        _SAPI_List(CFUNCTYPE(None, c_wchar_p, c_wchar_p)(functools.partial(__, ret)))
         return ret
 
     @staticmethod
@@ -119,13 +117,9 @@ def similarity(s1, s2):
     return levenshtein_normalized_similarity(len(s1), s1, len(s2), s2)
 
 
-class mecab(c_void_p):
-    @staticmethod
-    def create(path: str) -> "mecab":
-        return mecab_init(path.encode("utf8"))
-
-    def __del__(self):
-        mecab_end(self)
+class mecab(unique_ptr):
+    def __init__(self, path: str):
+        super().__init__(mecab_init(path.encode("utf8")), mecab_end)
 
     @property
     def dictionary_codec(self):
@@ -157,7 +151,7 @@ class mecab(c_void_p):
 
 mecab_init = utilsdll.mecab_init
 mecab_init.argtypes = (c_char_p,)
-mecab_init.restype = mecab
+mecab_init.restype = c_void_p
 mecab_parse_cb_a = CFUNCTYPE(None, c_char_p, c_char_p)
 mecab_parse_cb_w = CFUNCTYPE(None, c_wchar_p, c_wchar_p)
 mecab_parse = utilsdll.mecab_parse
@@ -317,6 +311,11 @@ def ListProcesses():
     return ret
 
 
+GetProcessListenPort = utilsdll.GetProcessListenPort
+GetProcessListenPort.argtypes = (LPCWSTR,)
+GetProcessListenPort.restype = c_int
+
+
 SetWindowInTaskbar = utilsdll.SetWindowInTaskbar
 SetWindowInTaskbar.argtypes = HWND, c_bool, c_bool
 
@@ -395,83 +394,124 @@ clearEffect.argtypes = (HWND,)
 
 # Abastract Webview
 
-AbstractWebViewPTR = c_void_p
 webview_destroy = utilsdll.webview_destroy
-webview_destroy.argtypes = (AbstractWebViewPTR,)
+webview_destroy.argtypes = (c_void_p,)
 webview_resize = utilsdll.webview_resize
-webview_resize.argtypes = AbstractWebViewPTR, c_int, c_int
+webview_resize.argtypes = c_void_p, c_int, c_int
 
 webview_contextmenu_clicked_t = CFUNCTYPE(None)
 
-
-class webview_c_MenuItem(Structure):
-    _fields_ = [
-        ("issep", c_bool),
-        ("checkable", c_bool),
-        ("checked", c_bool),
-        ("clicked", webview_contextmenu_clicked_t),
-        ("text", c_wchar * 256),
-    ]
+webview_menu_create = utilsdll.webview_menu_create
+webview_menu_create.restype = c_void_p
+webview_menu_delete = utilsdll.webview_menu_delete
+webview_menu_delete.argtypes = (c_void_p,)
+webview_menu_append = utilsdll.webview_menu_append
+webview_menu_append.argtypes = c_void_p, c_void_p
 
 
-webview_menu_handler_t = CFUNCTYPE(None, LPCWSTR, POINTER(c_size_t), POINTER(POINTER(webview_c_MenuItem)))
-webview_set_menu_handler = utilsdll.webview_set_menu_handler
-webview_set_menu_handler.argtypes = (
-    AbstractWebViewPTR,
-    webview_menu_handler_t,
+class webview_menu(unique_ptr):
+    def __init__(self):
+        super().__init__(webview_menu_create(), webview_menu_delete)
+
+    def append(self, item: "webview_menu_item"):
+        webview_menu_append(self, item)
+
+
+webview_menuitem_create = utilsdll.webview_menuitem_create
+webview_menuitem_create.argtypes = (
+    LPCWSTR,
+    c_bool,
+    c_bool,
+    c_bool,
+    c_void_p,
 )
-webview_set_menu_handler.restype = c_bool
-webview_allocate_buffer = utilsdll.webview_allocate_buffer
-webview_allocate_buffer.argtypes = (c_size_t,)
-webview_allocate_buffer.restype = c_void_p
-webview_evaljs = utilsdll.webview_evaljs
-webview_evaljs.argtypes = AbstractWebViewPTR, c_wchar_p, c_void_p
-webview_evaljs_CALLBACK = CFUNCTYPE(None, c_wchar_p)
+webview_menuitem_create.restype = c_void_p
+webview_menuitem_append_submenu = utilsdll.webview_menuitem_append_submenu
+webview_menuitem_append_submenu.argtypes = c_void_p, c_void_p
+webview_menuitem_delete = utilsdll.webview_menuitem_delete
+webview_menuitem_delete.argtypes = (c_void_p,)
 
-webview_bind = utilsdll.webview_bind
-webview_bind.argtypes = AbstractWebViewPTR, c_wchar_p, c_void_p
-webview_navigate = utilsdll.webview_navigate
-webview_navigate.argtypes = AbstractWebViewPTR, c_wchar_p
-webview_sethtml = utilsdll.webview_sethtml
-webview_sethtml.argtypes = AbstractWebViewPTR, c_wchar_p
-webview_put_PreferredColorScheme = utilsdll.webview_put_PreferredColorScheme
-webview_put_PreferredColorScheme.argtypes = AbstractWebViewPTR, c_int
-webview_put_ZoomFactor = utilsdll.webview_put_ZoomFactor
-webview_put_ZoomFactor.argtypes = AbstractWebViewPTR, c_double
-webview_get_ZoomFactor = utilsdll.webview_get_ZoomFactor
-webview_get_ZoomFactor.argtypes = (AbstractWebViewPTR,)
-webview_get_ZoomFactor.restype = c_double
+
+class webview_menu_item(unique_ptr):
+    def __init__(self, text, issep, checkable, checked, clicked):
+        super().__init__(
+            webview_menuitem_create(text, issep, checkable, checked, clicked),
+            webview_menuitem_delete,
+        )
+
+    def appendSub(self, item: "webview_menu_item"):
+        webview_menuitem_append_submenu(self, item)
 
 
 class MenuItem:
     def __init__(
-        self, issep=False, checkable=False, checked=False, clicked=lambda: 0, text=""
+        self,
+        issep=False,
+        checkable=False,
+        checked=False,
+        clicked=None,
+        text="",
+        translate=True,
     ):
-        self.issep = issep
-        self.checkable = checkable
-        self.checked = checked
-        self.clicked = clicked
-        self.text = text
+        self.clicked = webview_contextmenu_clicked_t(clicked) if clicked else None
+        self.sub = []
+        self.item = webview_menu_item(
+            _TR(text) if translate else text,
+            issep,
+            checkable,
+            checked,
+            clicked=self.clicked,
+        )
+
+    def appendSub(self, sub: "MenuItem"):
+        self.item.appendSub(sub.item)
+        self.sub.append(sub)
+
+
+webview_menu_handler_t = CFUNCTYPE(c_void_p, LPCWSTR)
+webview_set_menu_handler = utilsdll.webview_set_menu_handler
+webview_set_menu_handler.argtypes = (c_void_p, webview_menu_handler_t)
+webview_set_menu_handler.restype = c_bool
+webview_allocate_buffer = utilsdll.webview_allocate_buffer
+webview_allocate_buffer.argtypes = (c_size_t,)
+webview_allocate_buffer.restype = c_void_p
+webview_setfocus = utilsdll.webview_setfocus
+webview_setfocus.argtypes = (c_void_p,)
+webview_evaljs = utilsdll.webview_evaljs
+webview_evaljs.argtypes = c_void_p, c_wchar_p, c_void_p
+webview_evaljs_CALLBACK = CFUNCTYPE(None, c_wchar_p)
+
+webview_bind = utilsdll.webview_bind
+webview_bind.argtypes = c_void_p, c_wchar_p, c_void_p
+webview_navigate = utilsdll.webview_navigate
+webview_navigate.argtypes = c_void_p, c_wchar_p
+webview_sethtml = utilsdll.webview_sethtml
+webview_sethtml.argtypes = c_void_p, c_wchar_p
+webview_put_PreferredColorScheme = utilsdll.webview_put_PreferredColorScheme
+webview_put_PreferredColorScheme.argtypes = c_void_p, c_int
+webview_put_ZoomFactor = utilsdll.webview_put_ZoomFactor
+webview_put_ZoomFactor.argtypes = c_void_p, c_double
+webview_get_ZoomFactor = utilsdll.webview_get_ZoomFactor
+webview_get_ZoomFactor.argtypes = (c_void_p,)
+webview_get_ZoomFactor.restype = c_double
 
 
 class AbstractWebView:
+    def setfocus(self):
+        webview_setfocus(self.ptr)
 
     def bind(self, fname: str, fp):
         raise Exception()
 
-    def __del__(self):
-        self.destroy()
-
     def destroy(self):
-        _ = self.ptr
-        self.ptr = None
-        webview_destroy(_)
+        ptr = self.ptr.release()
+        if ptr:
+            webview_destroy(ptr)
 
     def __init__(self):
         self.html_limit = 2 * 1024 * 1024
         self.callbacks = []
-        self.__menu_clicked_ptr = []
-        self.ptr = AbstractWebViewPTR()
+        self.ptr = unique_ptr(None, webview_destroy)
 
     def _init(self):
         ptr = webview_menu_handler_t(self.__menu_handler)
@@ -509,21 +549,18 @@ class AbstractWebView:
     def on_menu(self, selecttext) -> "list[MenuItem]":
         return []
 
-    def __menu_handler(self, selecttext, psizet, ppcmenu):
-        self.__menu_clicked_ptr.clear()
+    def __menu_handler(self, selecttext):
+        self.___menu = unique_ptr(webview_menu_create(), webview_menu_delete)
+        self.___menu_items = []
         menuitens = self.on_menu(selecttext)
-        menuitens = [_ for _ in menuitens if _]
-        psizet[0] = c_size_t(len(menuitens))
-        buffer = cast(webview_allocate_buffer(len(menuitens) * sizeof(webview_c_MenuItem)), POINTER(webview_c_MenuItem))
-        for i, item in enumerate(menuitens):
-            buffer[i].issep = item.issep
-            buffer[i].checkable = item.checkable
-            buffer[i].checked = item.checked
-            __ = webview_contextmenu_clicked_t(item.clicked)
-            self.__menu_clicked_ptr.append(__)
-            buffer[i].clicked = __
-            buffer[i].text = item.text
-        ppcmenu[0] = buffer
+        if not menuitens:
+            return
+        for item in menuitens:
+            if not item:
+                continue
+            webview_menu_append(self.___menu, item.item)
+            self.___menu_items.append(item)
+        return self.___menu.value
 
 
 # Abastract Webview end
@@ -531,7 +568,7 @@ class AbstractWebView:
 # WebView2
 webview2_create = utilsdll.webview2_create
 webview2_create.argtypes = (
-    POINTER(AbstractWebViewPTR),
+    POINTER(c_void_p),
     HWND,
     c_bool,
     c_bool,
@@ -544,14 +581,16 @@ webview2_webmessage_callback_t = CFUNCTYPE(None, c_wchar_p)
 webview2_FilesDropped_callback_t = CFUNCTYPE(None, c_wchar_p)
 webview2_titlechange_callback_t = CFUNCTYPE(None, c_wchar_p)
 webview2_IconChanged_callback_t = CFUNCTYPE(None, POINTER(c_char), c_size_t)
+webview2_Crashed_Callback_t = CFUNCTYPE(None, c_char_p)
 webview2_set_callbacks.argtypes = (
-    AbstractWebViewPTR,
+    c_void_p,
     webview2_zoomchange_callback_t,
     webview2_navigating_callback_t,
     webview2_webmessage_callback_t,
     webview2_FilesDropped_callback_t,
     webview2_titlechange_callback_t,
     webview2_IconChanged_callback_t,
+    webview2_Crashed_Callback_t,
 )
 _webview2_detect_version = utilsdll.webview2_detect_version
 _webview2_detect_version.argtypes = c_wchar_p, c_void_p
@@ -655,6 +694,7 @@ class WebView2(AbstractWebView):
         FilesDropped_callback,
         titlechange_callback,
         IconChanged_callback,
+        Crashed_Callback,
     ):
         callbacks = []
         callbacks.append(webview2_zoomchange_callback_t(zoomchange_callback))
@@ -663,6 +703,7 @@ class WebView2(AbstractWebView):
         callbacks.append(webview2_FilesDropped_callback_t(FilesDropped_callback))
         callbacks.append(webview2_titlechange_callback_t(titlechange_callback))
         callbacks.append(webview2_IconChanged_callback_t(IconChanged_callback))
+        callbacks.append(webview2_Crashed_Callback_t(Crashed_Callback))
         self.callbacks.extend(callbacks)
         webview2_set_callbacks(self.ptr, *callbacks)
 
@@ -745,11 +786,11 @@ class WebView2(AbstractWebView):
 # EdgeHtml
 
 edgehtml_new = utilsdll.edgehtml_new
-edgehtml_new.argtypes = (POINTER(AbstractWebViewPTR), HWND, c_bool)
+edgehtml_new.argtypes = (POINTER(c_void_p), HWND, c_bool)
 edgehtml_new.restype = HRESULT
 edgehtml_set_notify_callback = utilsdll.edgehtml_set_notify_callback
 web_notify_callback_t = CFUNCTYPE(None, LPCWSTR)
-edgehtml_set_notify_callback.argtypes = AbstractWebViewPTR, web_notify_callback_t
+edgehtml_set_notify_callback.argtypes = c_void_p, web_notify_callback_t
 
 
 class EdgeHtml(AbstractWebView):
@@ -780,27 +821,26 @@ class EdgeHtml(AbstractWebView):
 
 # EdgeHtml
 # MSHTML
-AbstractWebViewPTR
 html_version = utilsdll.html_version
 html_version.restype = DWORD
 html_new = utilsdll.html_new
-html_new.argtypes = (HWND, POINTER(AbstractWebViewPTR))
+html_new.argtypes = (HWND, POINTER(c_void_p))
 html_get_current_url = utilsdll.html_get_current_url
-html_get_current_url.argtypes = (AbstractWebViewPTR, c_void_p)
+html_get_current_url.argtypes = (c_void_p, c_void_p)
 html_get_select_text = utilsdll.html_get_select_text
 html_get_select_text_cb = CFUNCTYPE(None, c_wchar_p)
-html_get_select_text.argtypes = (AbstractWebViewPTR, c_void_p)
+html_get_select_text.argtypes = (c_void_p, c_void_p)
 html_get_html = utilsdll.html_get_html
-html_get_html.argtypes = (AbstractWebViewPTR, c_void_p, c_wchar_p)
+html_get_html.argtypes = (c_void_p, c_void_p, c_wchar_p)
 html_bind_function_FT = CFUNCTYPE(None, POINTER(c_wchar_p), c_int)
 html_check_ctrlc = utilsdll.html_check_ctrlc
-html_check_ctrlc.argtypes = (AbstractWebViewPTR,)
+html_check_ctrlc.argtypes = (c_void_p,)
 html_check_ctrlc.restype = c_bool
 
 
 class MSHTML(AbstractWebView):
     @property
-    def ptr(self) -> AbstractWebViewPTR:
+    def ptr(self) -> c_void_p:
         return self.browser
 
     @ptr.setter
@@ -820,7 +860,7 @@ class MSHTML(AbstractWebView):
     def __init__(self, parent: HWND = None):
         super().__init__()
         self.html_limit = 1
-        self.browser = AbstractWebViewPTR()
+        self.browser = unique_ptr(None, webview_destroy)
         html_new(int(parent), pointer(self.browser))
         if gobject.is_running_on_wine() or (
             html_version() < 10001
@@ -915,12 +955,16 @@ class AutoKillProcess:
     def setkill(self, kill):
         SetJobAutoKill(self._refkep, kill)
 
-    def __init__(self, commandorpid: "str|int", path=None, hide=True, kill=True):
+    def __init__(
+        self, commandorpid: "str|int|list[str]", path=None, hide=True, kill=True
+    ):
         if isinstance(commandorpid, int):
             self.pid = commandorpid
             self._refkep = CreateJobForProcess(commandorpid, kill)
         else:
             pid = DWORD()
+            if isinstance(commandorpid, list):
+                commandorpid = subprocess.list2cmdline(commandorpid)
             self._refkep = CreateProcessWithJob(
                 commandorpid, path, pointer(pid), hide, kill
             )
@@ -1284,51 +1328,23 @@ def AnalysisDllImports(file, needNameOnly=True, Allimports=True):
     return _res
 
 
-# print(
-#     AnalysisDllImports(
-#         r"D:\GitHub\LunaTranslator\src\files\DLL32\CVUtils.dll", False, False
-#     )
-# )
-# print(
-#     AnalysisDllImports(
-#         r"D:\GitHub\LunaTranslator\src\files\DLL64\NativeUtils.dll", False, False
-#     )
-# )
-# print(
-#     AnalysisDllExports(
-#         r"D:\GitHub\LunaTranslator\src\files\DLL64\NativeUtils.dll"
-#     )
-# )
+GetProcessMemory = utilsdll.GetProcessMemory
+GetProcessMemory.argtypes = (DWORD,)
+GetProcessMemory.restype = c_uint64
+GetProcessVRAM = utilsdll.GetProcessVRAM
+GetProcessVRAM.argtypes = DWORD, c_bool
+GetProcessVRAM.restype = c_uint64
 
-# print(
-#     AnalysisDllExports(r"D:\GitHub\LunaTranslator\src\files\DLL32\CVUtils.dll")
-# )
-
-record_with_vad_create = utilsdll.record_with_vad_create
-record_with_vad_create.restype = c_void_p
-record_with_vad_delete = utilsdll.record_with_vad_delete
-record_with_vad_delete.argtypes = (c_void_p,)
-record_with_vad_get_last_voice = utilsdll.record_with_vad_get_last_voice
-record_with_vad_get_last_voice_CB = CFUNCTYPE(None, POINTER(c_char), c_size_t)
-record_with_vad_get_last_voice.argtypes = c_void_p, record_with_vad_get_last_voice_CB
+_ListXpuVendors = utilsdll.ListXpuVendors
+_ListXpuVendorscb = CFUNCTYPE(None, LPCWSTR)
+_ListXpuVendors.argtypes = c_bool, _ListXpuVendorscb
 
 
-class record_with_vad:
-    def get(self) -> "bytes|None":
-        ret = []
+def ListXpuVendors(gpu: bool = True):
+    __ = set()
+    _ListXpuVendors(gpu, _ListXpuVendorscb(__.add))
+    return __
 
-        def _cb(ptr, size):
-            ret.append(ptr[:size])
 
-        record_with_vad_get_last_voice(self.ptr, record_with_vad_get_last_voice_CB(_cb))
-        if not ret:
-            return None
-        return ret[0]
-
-    def __del__(self):
-        record_with_vad_delete(self.ptr)
-
-    def __init__(self):
-        self.ptr = record_with_vad_create()
-        if not self.ptr:
-            raise Exception()
+CreateUrlProtocol = utilsdll.CreateUrlProtocol
+CreateUrlProtocol.argtypes = (LPCWSTR,)

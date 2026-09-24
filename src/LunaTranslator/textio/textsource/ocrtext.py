@@ -1,4 +1,4 @@
-import time, copy
+import time, json
 from myutils.config import globalconfig
 from myutils.utils import checkmd5reloadmodule, parsekeystringtomodvkcode
 import NativeUtils, windows
@@ -13,21 +13,20 @@ from CVUtils import cvMat
 from traceback import print_exc
 
 
-def imageCutEx(*a):
-    img = imageCut(*a)
+def imageCutEx(hwnd, rectX: QRect):
+    img = imageCut(hwnd, rectX)
     succ = True
-    if a[0]:
+    if hwnd:
         succ, img = img
     else:
         succ = False
     if img.isNull():
         return img
     if not succ:
-        rectX = QRect(a[1], a[2], a[3] - a[1], a[4] - a[2])
         rect2 = windows.GetWindowRect(gobject.base.translation_ui.winid)
         rect = QRect(rect2[0], rect2[1], rect2[2] - rect2[0], rect2[3] - rect2[1])
         if rectX.intersected(rect):
-            rect.translate(-a[1], -a[2])
+            rect.translate(-rectX.x(), -rectX.y())
             painter = QPainter(img)
             painter.setBrush(Qt.GlobalColor.white)
             painter.setPen(Qt.PenStyle.NoPen)
@@ -58,13 +57,13 @@ class rangemanger:
 
     def getresmanual(self):
         rect = self.range_ui.getrect()
-        if rect is None:
+        if not rect.isValid():
             return
-        imgr = imageCutEx(self.ref.hwnd, rect[0][0], rect[0][1], rect[1][0], rect[1][1])
+        imgr = imageCutEx(self.ref.hwnd, rect)
         if imgr.isNull():
             return
-        result = ocr_run(imgr, (rect[0][0], rect[0][1]))
-        self.savelastimg = cvMat.fromQImage(imgr)
+        result = ocr_run(imgr, (rect.x(), rect.y()))
+        self.savelastimg = cvMat(imgr)
         self.savelastrecimg = self.savelastimg
         self.lastocrtime = time.time()
         self.savelasttext = result.textonly
@@ -72,24 +71,24 @@ class rangemanger:
 
     def getresauto(self):
         rect = self.range_ui.getrect()
-        if rect is None:
+        if not rect.isValid():
             return
-        imgr = imageCutEx(self.ref.hwnd, rect[0][0], rect[0][1], rect[1][0], rect[1][1])
+        imgr = imageCutEx(self.ref.hwnd, rect)
         ok = True
         if globalconfig.get("ocr_auto_method_v2", "period") == "analysis":
-            imgr1 = cvMat.fromQImage(imgr)
+            imgr1 = cvMat(imgr)
 
             image_score = imgr1.MSSIM(self.savelastimg)
 
             gobject.base.thresholdsett1.emit(str(image_score))
             self.savelastimg = imgr1
 
-            if image_score > globalconfig["ocr_stable_sim_v2"]:
+            if image_score > globalconfig.get("ocr_stable_sim_v2", 0.5):
 
                 image_score2 = imgr1.MSSIM(self.savelastrecimg)
 
                 gobject.base.thresholdsett2.emit(str(image_score2))
-                if image_score2 > globalconfig["ocr_diff_sim_v2"]:
+                if image_score2 > globalconfig.get("ocr_diff_sim_v2", 0.95):
                     ok = False
                 else:
                     self.savelastrecimg = imgr1
@@ -102,27 +101,27 @@ class rangemanger:
                 ok = False
         if ok == False:
             return
-        result = ocr_run(imgr, (rect[0][0], rect[0][1]))
+        result = ocr_run(imgr, (rect.x(), rect.y()))
         t = result.textonly
         self.lastocrtime = time.time()
         sim = NativeUtils.distance(self.savelasttext, t)
         self.savelasttext = t
-        if sim < globalconfig["ocr_text_diff"]:
+        if sim < globalconfig.get("ocr_text_diff", 3):
             return
         self.savelasttext = t
         return result
 
     def waitforstable(self):
         rect = self.range_ui.getrect()
-        if rect is None:
+        if not rect.isValid():
             return False
-        imgr = imageCutEx(self.ref.hwnd, rect[0][0], rect[0][1], rect[1][0], rect[1][1])
-        imgr1 = cvMat.fromQImage(imgr)
+        imgr = imageCutEx(self.ref.hwnd, rect)
+        imgr1 = cvMat(imgr)
         image_score = imgr1.MSSIM(self.savelastimg)
 
         gobject.base.thresholdsett1.emit(str(float(image_score)))
         self.savelastimg = imgr1
-        return image_score > globalconfig["ocr_stable_sim2_v2"]
+        return image_score > globalconfig.get("ocr_stable_sim2_v2", 0.95)
 
 
 class ocrtext(basetext):
@@ -138,15 +137,19 @@ class ocrtext(basetext):
 
     def clearrange(self):
         self.ranges.clear()
-        globalconfig["ocrregions"].clear()
+        try:
+            globalconfig.pop("ocrregions2")
+        except:
+            pass
 
     def leaveone(self):
-        self.ranges = self.ranges[-1:]
+        while len(self.ranges) > 1:
+            self.ranges.pop(0)  # 直接[-1:]不知道为什么不work
         if self.ranges:
             self.ranges[0].range_ui.isfocus = False
 
     def newrangeadjustor(self):
-        if len(self.ranges) == 0 or globalconfig["multiregion"]:
+        if len(self.ranges) == 0 or globalconfig.get("multiregion", False):
             self.ranges.append(rangemanger(self, self.ranges))
 
     def starttrace(self, pos):
@@ -157,21 +160,22 @@ class ocrtext(basetext):
         for _r in self.ranges:
             _r.range_ui.traceoffsetsignal.emit(curr)
 
-    def setrect(self, rect):
+    def setrect(self, rect: QRect):
         self.ranges[-1].range_ui.setrect(rect)
 
-    def setstyle(self):
+    def setstyle(self, *_):
         [_.range_ui.setstyle() for _ in self.ranges]
 
     def showhiderangeui(self, b):
         if b and len(self.ranges) == 0:
-            for region in globalconfig["ocrregions"]:
-                if region:
-                    self.newrangeadjustor()
-                    self.setrect(region)
+            for region in globalconfig.get("ocrregions2", []):
+                if not region:
+                    continue
+                self.newrangeadjustor()
+                self.setrect(QRect(*region))
             return
         for _ in self.ranges:
-            windows.MouseTrans.unset(_.range_ui.winId())
+            _.range_ui.setmousetransp(False)
 
             if b:
                 _r = _.range_ui.getrect()
@@ -183,7 +187,7 @@ class ocrtext(basetext):
     @threader
     def gettextthread(self):
         laststate = tuple((0 for _ in range(len(globalconfig["ocr_trigger_events"]))))
-        lastevents = copy.deepcopy(globalconfig["ocr_trigger_events"])
+        lastevents = json.dumps(globalconfig["ocr_trigger_events"])
         while not self.ending:
             if self._pause_state:
                 time.sleep(0.1)
@@ -199,13 +203,15 @@ class ocrtext(basetext):
                 triggered = False
                 this = tuple(
                     (
-                        windows.GetAsyncKeyState(parsekeystringtomodvkcode(line["vkey"])[1])
+                        windows.GetAsyncKeyState(
+                            parsekeystringtomodvkcode(line["vkey"])[1]
+                        )
                         for line in globalconfig["ocr_trigger_events"]
                     )
                 )
-                if lastevents != globalconfig["ocr_trigger_events"]:
+                if lastevents != json.dumps(globalconfig["ocr_trigger_events"]):
                     laststate = this
-                    lastevents = copy.deepcopy(globalconfig["ocr_trigger_events"])
+                    lastevents = json.dumps(globalconfig["ocr_trigger_events"])
                     continue
                 for _, line in enumerate(globalconfig["ocr_trigger_events"]):
                     event = line["event"]
@@ -303,5 +309,7 @@ class ocrtext(basetext):
         self._pause_state = False
 
     def end(self):
-        globalconfig["ocrregions"] = [_.range_ui.getrect() for _ in self.ranges]
+        globalconfig["ocrregions2"] = [
+            _.range_ui.getrect().getRect() for _ in self.ranges
+        ]
         self.ranges.clear()

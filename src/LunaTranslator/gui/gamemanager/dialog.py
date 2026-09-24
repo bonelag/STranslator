@@ -18,13 +18,15 @@ from myutils.config import (
     get_launchpath,
     globalconfig,
     extradatas,
+    ui_settings,
 )
 from gui.usefulwidget import (
     saveposwindow,
     IconButton,
     getspinbox,
     SplitLine,
-    getcolorbutton,
+    create_centered_rect,
+    ColorButton,
     threeswitch,
     getsimplecombobox,
     request_delete_ok,
@@ -53,13 +55,40 @@ from gui.gamemanager.common import (
 
 @Singleton
 class dialog_savedgame_integrated(saveposwindow):
+    def createviewswitch(self, layout: QLayout):
+        switch = threeswitch(
+            self,
+            icons=["fa.list", "fa.th-list", "fa.th"],
+            Direction=QBoxLayout.Direction.TopToBottom,
+        )
+        switch.setDirection(QBoxLayout.Direction.LeftToRight)
 
-    def selectlayout(self, type, init=False):
-        if not init:
-            self.syssettingbtn.setVisible(type != 0)
+        switch.selectlayout(
+            globalconfig.get("gamemanager_integrated_internal_layout", 2)
+        )
+        switch.btnclicked.connect(self.selectlayout)
+        if globalconfig.get("gamemanager_integrated_internal_layout", 2) != 0:
+            syssettingbtn = IconButton(icon="fa.gear", parent=self, tips="界面设置")
+            syssettingbtn.clicked.connect(lambda: dialog_syssetting(self.__internal))
+            layout.addWidget(syssettingbtn)
+        layout.addWidget(switch)
+        lockbtn = IconButton(
+            icon=["fa.unlock", "fa.lock"],
+            parent=self,
+            checkable=True,
+            checked=globalconfig.get("gamemanager_extrabuttons_lock", True),
+            tips="锁定",
+        )
+        lockbtn.clicked.connect(
+            lambda checked: globalconfig.__setitem__(
+                "gamemanager_extrabuttons_lock", bool(checked)
+            )
+        )
+        layout.addWidget(lockbtn)
+
+    def selectlayout(self, type):
         try:
             globalconfig["gamemanager_integrated_internal_layout"] = type
-            self.do_resize()
             klass = [
                 dialog_savedgame_legacy,
                 dialog_savedgame_v3,
@@ -68,10 +97,14 @@ class dialog_savedgame_integrated(saveposwindow):
             _old = self.internallayout.takeAt(0).widget()
             _old.hide()
             _: dialog_savedgame_new = klass(self)
+            self.__internal = _
+            if not self.underMouse() and not globalconfig.get(
+                "gamemanager_extrabuttons_lock", True
+            ):
+                _.leave.emit(True)
             self.internallayout.addWidget(_)
             _.directshow()
             _old.deleteLater()
-            self.__internal = _
         except:
             print_exc()
 
@@ -80,7 +113,10 @@ class dialog_savedgame_integrated(saveposwindow):
             parent,
             flags=Qt.WindowType.WindowMinMaxButtonsHint
             | Qt.WindowType.WindowCloseButtonHint,
-            poslist=globalconfig["savegamedialoggeo"],
+            posinit=globalconfig.get(
+                "savegamedialoggeo", create_centered_rect(800, 600).getRect()
+            ),
+            possave=functools.partial(globalconfig.__setitem__, "savegamedialoggeo"),
         )
         self.setWindowTitle("游戏管理")
         self.setWindowIcon(
@@ -93,57 +129,20 @@ class dialog_savedgame_integrated(saveposwindow):
         self.internallayout.addWidget(QWidget())
         self.setCentralWidget(w)
 
-        self.switch = threeswitch(
-            self,
-            icons=["fa.list", "fa.th-list", "fa.th"],
-            Direction=QBoxLayout.Direction.TopToBottom,
-        )
-        self.syssettingbtn = IconButton(icon="fa.gear", parent=self, tips="界面设置")
-        self.syssettingbtn.clicked.connect(lambda: dialog_syssetting(self.__internal))
-        self.syssettingbtn.sizeChanged.connect(self.do_resize)
-        self.switch.sizeChanged.connect(self.do_resize)
         self.show()
-        self.switch.selectlayout(globalconfig.get("gamemanager_integrated_internal_layout", 2))
-        self.switch.btnclicked.connect(self.selectlayout)
-        self.selectlayout(globalconfig.get("gamemanager_integrated_internal_layout", 2), True)
-
-    def showEvent(self, a0):
-        self.__check()
-        return super().showEvent(a0)
-
-    def __check(self):
-        if not (self.hasFocus() and self.underMouse()):
-            if globalconfig.get("gamemanager_integrated_internal_layout", 2) != 0:
-                self.switch.hide()
-            self.syssettingbtn.hide()
-
-    def resizeEvent(self, e: QResizeEvent):
-        self.do_resize()
-
-    def do_resize(self, _=None):
-        if globalconfig.get("gamemanager_integrated_internal_layout", 2) in (2,):
-            self.switch.setDirection(QBoxLayout.Direction.TopToBottom)
-            self.switch.move(0, self.height() - self.switch.height())
-            self.syssettingbtn.move(
-                0, self.height() - self.switch.height() - self.syssettingbtn.height()
-            )
-        else:
-            self.switch.setDirection(QBoxLayout.Direction.LeftToRight)
-            x = self.width() - self.switch.width()
-            self.switch.move(x, 0)
-            x -= self.syssettingbtn.width()
-            self.syssettingbtn.move(x, 0)
+        self.selectlayout(globalconfig.get("gamemanager_integrated_internal_layout", 2))
 
     def leaveEvent(self, a0):
-        if globalconfig.get("gamemanager_integrated_internal_layout", 2) != 0:
-            self.switch.hide()
-        self.syssettingbtn.hide()
+        if (
+            self.__internal
+            and not self.geometry().contains(QCursor.pos())
+            and not globalconfig.get("gamemanager_extrabuttons_lock", True)
+        ):
+            self.__internal.leave.emit(True)
         return super().leaveEvent(a0)
 
     def enterEvent(self, a0):
-        self.switch.show()
-        if globalconfig.get("gamemanager_integrated_internal_layout", 2) != 0:
-            self.syssettingbtn.show()
+        self.__internal.leave.emit(False)
         return super().enterEvent(a0)
 
 
@@ -269,9 +268,13 @@ class imagehelper:
     def rect(self):
         return QRectF(QPoint(0, 0), self.size())
 
+    @property
+    def imagewrapmode(self):
+        return globalconfig.get("imagewrapmode", 0)
+
     def adaptsize(self, size: QSize):
 
-        if globalconfig["imagewrapmode"] == 0:
+        if self.imagewrapmode == 0:
             h, w = size.height(), size.width()
             r = float(w) / h
             max_r = float(self.width()) / self.height()
@@ -282,7 +285,7 @@ class imagehelper:
                 new_h = self.height()
                 new_w = new_h * r
             return QSizeF(new_w, new_h)
-        elif globalconfig["imagewrapmode"] == 1:
+        elif self.imagewrapmode == 1:
             h, w = size.height(), size.width()
             r = float(w) / h
             max_r = float(self.width()) / self.height()
@@ -293,9 +296,9 @@ class imagehelper:
                 new_h = self.height()
                 new_w = new_h * r
             return QSizeF(new_w, new_h)
-        elif globalconfig["imagewrapmode"] == 2:
+        elif self.imagewrapmode == 2:
             return QSizeF(self.size())
-        elif globalconfig["imagewrapmode"] == 3:
+        elif self.imagewrapmode == 3:
             return QSizeF(size)
 
     def setimg(self):
@@ -306,9 +309,9 @@ class imagehelper:
             return
         if not (self.height() and self.width()):
             return
-        if self.__last == (self.size(), globalconfig["imagewrapmode"]):
+        if self.__last == (self.size(), self.imagewrapmode):
             return
-        self.__last = (self.size(), globalconfig["imagewrapmode"])
+        self.__last = (self.size(), self.imagewrapmode)
         rate = self.p.devicePixelRatioF()
         newpixmap = QPixmap((self.size() * rate).toSize())
         newpixmap.setDevicePixelRatio(rate)
@@ -402,24 +405,25 @@ class ItemWidget(QWidget):
         exists = os.path.exists(get_launchpath(gameuid))
         self.setObjectName("savegame_exists" + str(exists))
         self.setToolTip(savehook_new_data[gameuid]["title"])
+        self.setAccessibleName(savehook_new_data[gameuid]["title"])
 
     @property
     def margin(self):
-        return (
-            globalconfig["dialog_savegame_layout"]["margin2"]
-            + globalconfig["dialog_savegame_layout"]["borderW"]
-        )
+        return ui_settings["dialog_savegame_layout"].get("margin2", 6) + ui_settings[
+            "dialog_savegame_layout"
+        ].get("borderW", 1)
 
     @property
     def imageheight(self):
-        if globalconfig["dialog_savegame_layout"]["layout"] == "updown":
+        layout = ui_settings["dialog_savegame_layout"].get("layout", "updown")
+        if layout == "updown":
             return self.height() - self.margin * 2 - self.textareaheight
-        if globalconfig["dialog_savegame_layout"]["layout"] == "overlay":
+        if layout == "overlay":
             return self.height() - self.margin * 2
 
     @property
     def textcolor(self):
-        return QColor(globalconfig["dialog_savegame_layout"]["textColor"])
+        return QColor(ui_settings["dialog_savegame_layout"].get("textColor", "#000000"))
 
     @property
     def textfont(self):
@@ -433,24 +437,24 @@ class ItemWidget(QWidget):
     @property
     def textareaheight(self):
         h = QFontMetricsF(self.textfont, self).height()
-        h = globalconfig["dialog_savegame_layout"]["textH2"] * h
+        h = ui_settings["dialog_savegame_layout"].get("textH2", 1) * h
         return h
 
     def paintEvent(self, a0):
-        dialog_savegame_layout = globalconfig["dialog_savegame_layout"]
-        hasFocus = dialog_savegame_layout["onselectcolor2"] if self.isfucked else None
-        background = dialog_savegame_layout[
-            (
-                "backcolor2",
-                "onfilenoexistscolor2",
-            )[self.objectName() == "savegame_existsFalse"]
-        ]
-        bordercolor = dialog_savegame_layout[
-            (
-                "borderColor",
-                "borderColor2",
-            )[self.isfucked]
-        ]
+        dialog_savegame_layout = ui_settings["dialog_savegame_layout"]
+        hasFocus = (
+            dialog_savegame_layout.get("onselectcolor2", "#40007fff")
+            if self.isfucked
+            else None
+        )
+        if self.objectName() == "savegame_existsFalse":
+            background = dialog_savegame_layout.get("onfilenoexistscolor2", "#40acacac")
+        else:
+            background = dialog_savegame_layout.get("backcolor2", "#40ffffff")
+        if self.isfucked:
+            bordercolor = dialog_savegame_layout.get("borderColor2", "#ff000000")
+        else:
+            bordercolor = dialog_savegame_layout.get("borderColor", "#10000000")
         painter = QPainter(self)
         painter.setPen(Qt.PenStyle.NoPen)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
@@ -495,12 +499,15 @@ class ItemWidget(QWidget):
         cutter_path.addRect(cutter)
         result_path = path.subtracted(cutter_path)
         painter.fillPath(
-            result_path, QColor(globalconfig["dialog_savegame_layout"]["textbackColor"])
+            result_path,
+            QColor(
+                ui_settings["dialog_savegame_layout"].get("textbackColor", "#ffffffff")
+            ),
         )
 
     def get_out_path(self):
-        dialog_savegame_layout = globalconfig["dialog_savegame_layout"]
-        radius = dialog_savegame_layout["radius"]
+        dialog_savegame_layout = ui_settings["dialog_savegame_layout"]
+        radius = dialog_savegame_layout.get("radius", 10)
         rect = QRectF(self.rect())
         path_outer = QPainterPath()
         path_outer.addRoundedRect(rect, radius, radius)
@@ -508,12 +515,12 @@ class ItemWidget(QWidget):
 
     @property
     def radius(self):
-        return globalconfig["dialog_savegame_layout"]["radius"]
+        return ui_settings["dialog_savegame_layout"].get("radius", 10)
 
     def get_inter_path(self):
-        dialog_savegame_layout = globalconfig["dialog_savegame_layout"]
-        offset = dialog_savegame_layout["borderW"]
-        radius = dialog_savegame_layout["radius"]
+        dialog_savegame_layout = ui_settings["dialog_savegame_layout"]
+        offset = dialog_savegame_layout.get("borderW", 1)
+        radius = dialog_savegame_layout.get("radius", 10)
         return self.get_shrunk_rounded_rect_path(QRectF(self.rect()), radius, offset)
 
     def get_shrunk_rounded_rect_path(self, rect: QRectF, r, shrink_width):
@@ -528,7 +535,8 @@ class ItemWidget(QWidget):
         return path
 
 
-class dialog_savedgame_new(QSplitter):
+class dialog_savedgame_new(QWidget):
+    leave = pyqtSignal(bool)
 
     def dragEnterEvent(self, event: QDragEnterEvent):
         if event.mimeData().hasUrls():
@@ -596,11 +604,11 @@ class dialog_savedgame_new(QSplitter):
         self.flow.bgclicked.connect(ItemWidget.clearfocus)
         self.flow.setsize(
             QSize(
-                globalconfig["dialog_savegame_layout"]["itemw"],
-                globalconfig["dialog_savegame_layout"]["itemh"],
+                ui_settings["dialog_savegame_layout"].get("itemw", 130),
+                ui_settings["dialog_savegame_layout"].get("itemh", 190),
             )
         )
-        self.flow.setSpacing(globalconfig["dialog_savegame_layout"]["margin"])
+        self.flow.setSpacing(ui_settings["dialog_savegame_layout"].get("margin", 6))
         self.flowcontainer.addWidget(self.flow)
         idx = 0
         for k in self.reflistx:
@@ -784,6 +792,7 @@ class dialog_savedgame_new(QSplitter):
             "currvislistuid",
             self.resetcurrvislist,
             internal=uid,
+            default=None,
         )
         self.__layout.insertWidget(0, self.vislistcombo)
 
@@ -796,11 +805,11 @@ class dialog_savedgame_new(QSplitter):
     def callchange(self, _=None):
         self.flow.setsize(
             QSize(
-                globalconfig["dialog_savegame_layout"]["itemw"],
-                globalconfig["dialog_savegame_layout"]["itemh"],
+                ui_settings["dialog_savegame_layout"].get("itemw", 130),
+                ui_settings["dialog_savegame_layout"].get("itemh", 190),
             )
         )
-        self.flow.setSpacing(globalconfig["dialog_savegame_layout"]["margin"])
+        self.flow.setSpacing(ui_settings["dialog_savegame_layout"].get("margin", 6))
         self.flow.resizeandshow()
         for _ in self.flow.widgets:
             if not isinstance(_, ItemWidget):
@@ -809,18 +818,20 @@ class dialog_savedgame_new(QSplitter):
 
     def createsettings(self, formLayout: QFormLayout):
 
-        for i, (key, name) in enumerate(
+        for i, (key, name, default) in enumerate(
             [
-                ("itemw", "宽度"),
-                ("itemh", "高度"),
-                ("margin", "边距_inter"),
-                ("margin2", "边距_intra"),
-                ("radius", "圆角"),
-                ("borderW", "边框宽度"),
+                ("itemw", "宽度", 130),
+                ("itemh", "高度", 190),
+                ("margin", "边距_inter", 6),
+                ("margin2", "边距_intra", 6),
+                ("radius", "圆角", 10),
+                ("borderW", "边框宽度", 1),
             ]
         ):
             minv = 0 if i >= 2 else 32
-            spin = getspinbox(minv, 1000, globalconfig["dialog_savegame_layout"], key)
+            spin = getspinbox(
+                minv, 1000, ui_settings["dialog_savegame_layout"], key, default=default
+            )
             formLayout.addRow(name, spin)
             if "radius" == key:
                 spin.valueChanged.connect(self.callchange)
@@ -838,25 +849,27 @@ class dialog_savedgame_new(QSplitter):
                 globalconfig,
                 "imagewrapmode",
                 callback=self.callchange,
+                default=0,
             ),
         )
 
         formLayout.addRow(SplitLine())
-        for key, name in [
-            ("backcolor2", "颜色"),
-            ("onselectcolor2", "颜色_选中时"),
-            ("onfilenoexistscolor2", "游戏不存在时颜色"),
-            ("borderColor", "边框颜色"),
-            ("borderColor2", "边框颜色_选中时"),
+        for key, name, default in [
+            ("backcolor2", "颜色", "#40ffffff"),
+            ("onselectcolor2", "颜色_选中时", "#40007fff"),
+            ("onfilenoexistscolor2", "游戏不存在时颜色", "#40acacac"),
+            ("borderColor", "边框颜色", "#10000000"),
+            ("borderColor2", "边框颜色_选中时", "#ff000000"),
         ]:
             formLayout.addRow(
                 name,
-                getcolorbutton(
+                ColorButton(
                     self,
-                    globalconfig["dialog_savegame_layout"],
+                    ui_settings["dialog_savegame_layout"],
                     key,
                     callback=self.callchange,
                     alpha=True,
+                    default=default,
                 ),
             )
         formLayout.addRow(SplitLine())
@@ -865,20 +878,22 @@ class dialog_savedgame_new(QSplitter):
             getspinbox(
                 0,
                 1000,
-                globalconfig["dialog_savegame_layout"],
+                ui_settings["dialog_savegame_layout"],
                 "textH2",
                 callback=self.callchange,
                 double=False,
+                default=1,
             ),
         )
         formLayout.addRow(
             "文字区_布局",
             getsimplecombobox(
                 ["上下", "悬浮"],
-                globalconfig["dialog_savegame_layout"],
+                ui_settings["dialog_savegame_layout"],
                 "layout",
                 callback=self.callchange,
                 internal=["updown", "overlay"],
+                default="updown",
             ),
         )
         formLayout.addRow(
@@ -891,21 +906,23 @@ class dialog_savedgame_new(QSplitter):
         )
         formLayout.addRow(
             "颜色_文字",
-            getcolorbutton(
+            ColorButton(
                 self,
-                globalconfig["dialog_savegame_layout"],
+                ui_settings["dialog_savegame_layout"],
                 "textColor",
                 callback=self.callchange,
+                default="#000000",
             ),
         )
         formLayout.addRow(
             "颜色_文字区",
-            getcolorbutton(
+            ColorButton(
                 self,
-                globalconfig["dialog_savegame_layout"],
+                ui_settings["dialog_savegame_layout"],
                 "textbackColor",
                 callback=self.callchange,
                 alpha=True,
+                default="#ffffffff",
             ),
         )
 
@@ -957,23 +974,17 @@ class dialog_savedgame_new(QSplitter):
             self.topw.setFixedHeight(self.topw.sizeHint().height())
         return super().event(e)
 
-    def createHandle(self):
-        class MySplitterHandle(QSplitterHandle):
-            def paintEvent(self1, event):
-                if self1.underMouse():
-                    super().paintEvent(event)
-                else:
-                    pass
+    def _showhidebar(self, leave):
+        self.topw.setHidden(leave)
 
-        return MySplitterHandle(self.orientation(), self)
-
-    def __init__(self, parent) -> None:
+    def __init__(self, parent: "dialog_savedgame_integrated") -> None:
         super().__init__(parent)
+        self.leave.connect(self._showhidebar)
+        self.lay = QVBoxLayout(self)
+        self.lay.setContentsMargins(0, 0, 0, 0)
         self._parent = parent
         dialog_savedgame_new.reference = self
         self.setObjectName("NOBORDER")
-        self.setOrientation(Qt.Orientation.Vertical)
-        self.setHandleWidth(1)
         _w = QWidget()
         self.topw = _w
         layout = QHBoxLayout(_w)
@@ -995,14 +1006,16 @@ class dialog_savedgame_new(QSplitter):
                 icon="fa.sort-amount-asc", callback=self.sortgamecallback, tips="排序"
             )
         )
-        self.addWidget(_w)
+        layout.addWidget(IconButton(None))
+        parent.createviewswitch(layout)
+        self.lay.addWidget(_w)
         __ = QWidget()
         self.flowcontainer = QHBoxLayout(__)
         self.flowcontainer.setContentsMargins(0, 0, 0, 0)
         self.flow = QWidget()
         self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.customContextMenuRequested.connect(self.showmenu)
-        self.addWidget(__)
+        self.lay.addWidget(__)
         self.savebutton = []
 
         self.idxsave = []
@@ -1013,13 +1026,6 @@ class dialog_savedgame_new(QSplitter):
         else:
             self.tagschanged(tuple())
         self.installEventFilter(self)
-
-        def __(_):
-            globalconfig["dialogsplit"] = self.sizes()
-
-        if "dialogsplit" in globalconfig:
-            self.setSizes(globalconfig["dialogsplit"])
-        self.splitterMoved.connect(__)
 
     def eventFilter(self, obj, _):
         try:

@@ -1,7 +1,24 @@
 import platform, os, sys
+from ctypes import c_void_p
 
 thisuserconfig = "userconfig"
 runtime_bit_64 = platform.architecture()[0] == "64bit"
+
+
+class unique_ptr(c_void_p):
+    def __init__(self, ptr, deleter):
+        super().__init__(ptr)
+        self.deleter = deleter
+
+    def release(self):
+        ptr = self.value
+        self.deleter = None
+        c_void_p.__init__(self, None)
+        return ptr
+
+    def __del__(self):
+        if self and self.deleter:
+            self.deleter(self)
 
 
 def GetDllpath(_, base=None):
@@ -52,9 +69,9 @@ if TYPE_CHECKING:
     from LunaTranslator import BASEOBJECT
 base: "BASEOBJECT" = None
 isRunningMutex = None
+isRunningAlreadyExists = False
 serverindex = 0
 serverindex2 = 0
-istest = False
 tempconfig = {}
 
 

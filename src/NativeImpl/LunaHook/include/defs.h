@@ -27,14 +27,9 @@ constexpr auto PIPE_AVAILABLE_EVENT = L"LUNA_PIPE_AVAILABLE";
 constexpr auto LUNA_HOOK_DLL_64 = L"LunaHook64";
 constexpr auto LUNA_HOOK_DLL_32 = L"LunaHook32";
 
-#ifdef _WIN64
-constexpr auto LUNA_HOOK_DLL = LUNA_HOOK_DLL_64; // .dll but LoadLibrary automatically adds that
-#else
-constexpr auto LUNA_HOOK_DLL = LUNA_HOOK_DLL_32; // .dll but LoadLibrary automatically adds that
-#endif
 
 extern WORD LUNA_VERSION[4];
 
-struct DECLSPEC_UUID("fa13d4dd-7f49-4acc-bfaa-4558a5b799bf") _COMPATIBLE_HELPER; // 如果发生不兼容的修改，再修改这个，而不是只要版本号不同就不行，使条件更加宽松。
+struct DECLSPEC_UUID("253bf1be-e941-47d3-ae40-a2c6c88054d6") _COMPATIBLE_HELPER;
 inline const GUID &compatible_sig = __uuidof(_COMPATIBLE_HELPER);
 // EOF

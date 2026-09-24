@@ -1,5 +1,5 @@
 #include "dbcrnn.hpp"
-#if WINXPEXTRADEF
+#ifdef WINXP
 #include "../xpundef/xp_dxgi.h"
 #include "../xpundef/xp_d3d12.h"
 #else
@@ -87,7 +87,7 @@ DECLARE_API void OcrDetect(OcrLite *pOcrObj, const cv::Mat *mat,
     {
         auto result = pOcrObj->detect(*mat, mode);
 
-        for (auto item : result)
+        for (const auto &item : result)
         {
             cb(item.first[0].x, item.first[0].y,
                item.first[1].x, item.first[1].y,
@@ -157,9 +157,7 @@ static bool __OcrLoadRuntime()
     if (GetModuleHandleW(L"onnxruntime.dll"))
         return true;
     WCHAR path[MAX_PATH];
-    HMODULE hmodule;
-    GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCWSTR)&__OcrLoadRuntime, &hmodule);
-    GetModuleFileNameW(hmodule, path, MAX_PATH);
+    GetModuleFileNameW((HMODULE)&__ImageBase, path, MAX_PATH);
     auto currdir = std::filesystem::path(path).parent_path();
     auto myonnx = (currdir / "onnxruntime.dll").wstring();
     auto vermy = checkfileversion(myonnx);
@@ -211,7 +209,7 @@ std::vector<std::string> ListOpenVINODeviceTypes()
     auto ctor = GetProcAddress(hopenvino, "??0Core@ov@@QEAA@AEBV?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@Z");
     auto dtor = GetProcAddress(hopenvino, "??1Core@ov@@QEAA@XZ");
     auto get_available_devices = GetProcAddress(hopenvino, "?get_available_devices@Core@ov@@QEBA?AV?$vector@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@V?$allocator@V?$basic_string@DU?$char_traits@D@std@@V?$allocator@D@2@@std@@@2@@std@@XZ");
-    if (!dtor || !dtor || !get_available_devices)
+    if (!ctor || !dtor || !get_available_devices)
         return {};
     // ov::Core core;
     // std::vector<std::string> devices = core.get_available_devices();

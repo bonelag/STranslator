@@ -1,6 +1,7 @@
 
 #include "MinHook.h"
 #include "veh_hook.h"
+#include "lunarpc.h"
 extern WinMutex viewMutex;
 
 // - Unnamed helpers -
@@ -242,7 +243,7 @@ void TextHook::Send(uintptr_t lpDataBase)
 }
 void TextHook::Send(hook_context *context)
 {
-	auto buffer = (TextOutput_T *)local_buffer;
+	auto buffer = (TextOutput_T *)(local_buffer + TEXT_BUFFER_PREFIX);
 	TextBuffer buff{buffer->data, 0};
 	_InterlockedIncrement((long *)&useCount);
 	__try
@@ -491,7 +492,7 @@ bool SafeFilterFun(HookParam &hp, TextBuffer &buff)
 void TextHook::Read()
 {
 	// BYTE(*buffer)[PIPE_BUFFER_SIZE] = &::buffer, *pbData = *buffer + sizeof(ThreadParam);
-	auto buffer = (TextOutput_T *)local_buffer;
+	auto buffer = (TextOutput_T *)(local_buffer + TEXT_BUFFER_PREFIX);
 	buffer->type = hp.type;
 	TextBuffer buff{buffer->data, 1};
 	bool is_emu_hook = (hp.jittype != JITTYPE::PC) && (hp.jittype != JITTYPE::UNITY);
@@ -524,14 +525,13 @@ void TextHook::Read()
 				buff.from(location, currentLen);
 			}
 			lastlen = buff.size;
-			if (savelast)
-				memcpy(savelast, buff.data, buff.size);
+			memcpy(savelast, buff.data, buff.size);
 			if (hp.filter_fun && (!SafeFilterFun(hp, buff)))
 				continue;
 			TextOutput({GetCurrentProcessId(), address, 0, 0}, hp, buffer, buff.size);
 			if (hp.filter_fun)
 			{
-				buff.from(savelast ? savelast : location, lastlen);
+				buff.from(savelast, lastlen);
 			}
 		}
 		__except (EXCEPTION_EXECUTE_HANDLER)
@@ -545,6 +545,7 @@ void TextHook::Read()
 				Clear();
 		}
 	}
+	delete[] savelast;
 }
 
 bool TextHook::InsertReadCode()

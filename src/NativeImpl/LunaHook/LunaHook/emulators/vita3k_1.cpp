@@ -9,8 +9,9 @@ namespace
         s = re::sub(s, "<br>");
         s = re::sub(s, "%CF11F");
         s = re::sub(s, "%CFFFF");
-        s = re::sub(s, "%K%P");
-        s = re::sub(s, "%K%N");
+        s = re::sub(s, "%P");
+        s = re::sub(s, "%K");
+        s = re::sub(s, R"(%N(\x81\x40)*)");
         s = re::sub(s, "\n");
         buffer->from(s);
     }
@@ -126,6 +127,12 @@ namespace
     {
         auto s = buffer->strA();
         s = re::sub(s, "#Ruby\\[[-\\d]+,(.*?)\\]");
+        buffer->from(s);
+    }
+    void PCSG00401(TextBuffer *buffer, HookParam *hp)
+    {
+        auto s = buffer->strA();
+        s = re::sub(s, R"(\x81\x79(\x81\x40)*(.*?)(\x81\x40)*\x81\x7a)", "\x81\x79$2\x81\x7a");
         buffer->from(s);
     }
     void PCSG00766(TextBuffer *buffer, HookParam *hp)
@@ -1043,6 +1050,8 @@ struct emfuncinfoX
     emfuncinfo info;
 };
 static const emfuncinfoX emfunctionhooks_1[] = {
+    // ソラユメ
+    {0x8000C1C8, {FULL_STRING, 0, 0, 0, PCSG00401, "PCSG00401"}},
     // Princess Arthur
     {0x80065554, {FULL_STRING, 0, 0, 0, PCSG00766, "PCSG00271"}},
     // 冴えない彼女の育てかた -blessing flowers-
@@ -1106,7 +1115,9 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     // シルヴァリオ トリニティ -Beyond the Horizon-
     {0x800B7702, {0, 3, 0, 0, 0, "PCSG01259"}},
     // 追放選挙
-    {0x8002e176, {0, 0, 0, 0, FPCSG01023, "PCSG01023"}}, // dialogue+name,sjis
+    {0x8002e176, {FULL_STRING, 0, 0, 0, FPCSG01023, "PCSG01023"}},
+    {0x8003B256, {FULL_STRING, 0, 0, 0, FPCSG01023, "PCSG01023"}},
+    {0x8003B4A0, {FULL_STRING, 0, 0, 0, FPCSG01023, "PCSG01023"}},
     // 死神と少女
     {0x800204ba, {0, 2, 0, 0, FPCSG01282<0>, "PCSG01282"}}, // dialogueNVL,sjis
     {0x8000f00e, {0, 1, 0, 0, FPCSG01282<1>, "PCSG01282"}}, // dialogue main

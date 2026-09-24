@@ -20,7 +20,7 @@
 #include "engine64/BGI.h"
 #include "engine64/LightVN.h"
 #include "engine64/MKXPZ.h"
-#include "engines/mono/mono.h"
+#include "engines/unity/unity.h"
 #include "engines/lua/lua51.h"
 #include "engines/python/Renpy.h"
 #include "emulators/ppsspp.h"
@@ -36,7 +36,7 @@ std::vector<ENGINE *> check_engines()
         new Godot,
         new V8,
         new Renpy,
-        new mono,
+        new Unity,
         new yuzu,
         new Ryujinx,
         new PPSSPPWindows,
@@ -65,5 +65,6 @@ std::vector<ENGINE *> check_engines()
         new WillPlus,
         new THLabyrinth3,
         new CAPCOM,
+        new _5pb_2,
     };
 }

@@ -1,7 +1,7 @@
 import NativeUtils
 import os, threading, gobject, json
 from myutils.config import globalconfig
-from myutils.hwnd import subprochiderun
+from myutils.utils import subprochiderun
 from traceback import print_exc
 from qtsymbols import *
 from sometypes import WordSegResult
@@ -176,7 +176,7 @@ class mecab(_base):
             if not os.path.isdir(___):
                 continue
             for _dir, _, __ in os.walk(___):
-                self.kks = NativeUtils.mecab.create(os.path.abspath(_dir))
+                self.kks = NativeUtils.mecab(os.path.abspath(_dir))
                 if self.kks:
                     return
         raise Exception("not find")
@@ -324,10 +324,10 @@ class spacy_wrapper(_base):
                 os.path.join(path, "Python312/python.exe")
             ) and os.path.isfile(os.path.join(path, "spacy_wrapper.py")):
                 self.proc = subprochiderun(
-                    '"{}" "{}"'.format(
+                    [
                         os.path.join(path, "Python312/python.exe"),
                         os.path.join(path, "spacy_wrapper.py"),
-                    ),
+                    ],
                     run=False,
                 )
                 self._ = NativeUtils.AutoKillProcess(self.proc.pid)

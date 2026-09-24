@@ -16,6 +16,7 @@
 #include <Audiopolicy.h>
 #include <mmdeviceapi.h>
 #include <Psapi.h>
+#include <mmreg.h>
 #include <atlbase.h>
 #include <atlsync.h>
 #include <variant>
@@ -75,10 +76,14 @@
 #include <fcntl.h>
 #include <crtdefs.h>
 
+#include <cwctype>
 #include <memory>
 
 #include <d3d11.h>
 #include <dxgi.h>
+
+
+extern "C" IMAGE_DOS_HEADER __ImageBase;
 
 #include "common.hpp"
 #include "common2.hpp"

@@ -542,6 +542,17 @@ namespace
         s = re::sub(s, R"(#[A-Za-z]+\[[\d\-,\.]*\])");
         buffer->from(s);
     }
+    void F010049A022BA0000(TextBuffer *buffer, HookParam *hp)
+    {
+        auto s = buffer->strA();
+        auto m = re::match(s, R"(^(.*)#n#Pos\[.*?\](.*?)$)");
+        if (m)
+        {
+            s = u8"【" + m.value()[2].str() + u8"】" + m.value()[1].str();
+        }
+        buffer->from(s);
+        F0100BDD01AAE4000(buffer, hp);
+    }
     void F010048101D49E000(TextBuffer *buffer, HookParam *hp)
     {
         auto s = buffer->strW();
@@ -881,7 +892,7 @@ namespace
     }
     void F0100068019996000(TextBuffer *buffer, HookParam *hp)
     {
-        StringReplacer(buffer, TEXTANDLEN("%N"), TEXTANDLEN(u8"\n"));
+        StringReplacer(buffer, TEXTANDLEN("%N"), TEXTANDLEN("\n"));
     }
     void F0100ADC014DA0000(TextBuffer *buffer, HookParam *hp)
     {
@@ -1523,6 +1534,30 @@ namespace
         last = s;
         buffer->from(s);
     }
+    void F0100AA1013B96000(std::string &collect)
+    {
+        strReplace(collect, "\x87\x85", "\x81\x5c");
+        strReplace(collect, "\x87\x86", "\x81\x5c");
+        strReplace(collect, "\x87\x87", "\x81\x5c");
+        strReplace(collect, "\x87\x6e");
+        strReplace(collect, "\n");
+        strReplace(collect, "\x81\x40");
+    }
+    void T01008030149FE000(hook_context *context, HookParam *hp, TextBuffer *buffer, uintptr_t *split)
+    {
+        auto ptr = (char *)(YUZU::emu_arg(context, hp->emu_addr)[0xC]);
+        while (*ptr || *(ptr - 1))
+            ptr--;
+        while (!(*ptr && *(ptr + 1)))
+            ptr++;
+        auto len = *(int *)(ptr - 4);
+        if (len > 0xff)
+            return;
+        auto collect = std::string(ptr, len * 2);
+        strReplace(collect, "\x87\x6c\x87\x6d", "\x8e\xb5\x8a\x43\x8f\x74\x89\xcc");
+        F0100AA1013B96000(collect);
+        buffer->from(collect);
+    }
     void TF0100AA1013B96000(hook_context *context, HookParam *hp, TextBuffer *buffer, uintptr_t *split)
     {
         auto ptr = (char *)(YUZU::emu_arg(context, hp->emu_addr)[0xb]);
@@ -1543,12 +1578,7 @@ namespace
                 ptr += strlen(ptr);
             }
         } while (*ptr || *(ptr + 1));
-        strReplace(collect, "\x87\x85", "\x81\x5c");
-        strReplace(collect, "\x87\x86", "\x81\x5c");
-        strReplace(collect, "\x87\x87", "\x81\x5c");
-        strReplace(collect, "\x87\x6e");
-        strReplace(collect, "\n");
-        strReplace(collect, "\x81\x40");
+        F0100AA1013B96000(collect);
         buffer->from(collect);
     }
     void T0100CF400F7CE000(hook_context *context, HookParam *hp, TextBuffer *buffer, uintptr_t *split)
@@ -2135,6 +2165,10 @@ namespace
         last = s;
         buffer->from(parse(s));
     }
+    void F0100A9501759E000(TextBuffer *buffer, HookParam *hp)
+    {
+        StringFilter(buffer, TEXTANDLEN(L" 　"));
+    }
     void F0100A0001B9F0000(TextBuffer *buffer, HookParam *hp)
     {
         auto s = buffer->strA();
@@ -2458,7 +2492,7 @@ namespace
     void wF0100A9B01D4AE000(TextBuffer *buffer, HookParam *hp)
     {
         auto s = buffer->strW();
-        s = re::sub(s, LR"(@(.*?)@)", L"$1\n");
+        s = re::sub(s, LR"(@(.*?)@)", L"【$1】");
         buffer->from(s);
     }
     void aF0100A9B01D4AE000(TextBuffer *buffer, HookParam *hp)
@@ -2654,11 +2688,19 @@ namespace
         CharFilter(buffer, L'\n');
         StringCharReplacer(buffer, TEXTANDLEN(L"<sprite=\"Emoji\" name=\"heart\">"), L'♥');
     }
+    template <bool engver = false>
     void F0100E9801CAC2000(TextBuffer *buffer, HookParam *hp)
     {
         auto s = buffer->strW();
-        if (all_ascii(s) && (s != L"@PlayerName@"))
-            return buffer->clear();
+        if (!engver)
+        {
+            if (all_ascii(s) && (s != L"@PlayerName@"))
+                return buffer->clear();
+        }
+        else
+        {
+            strReplace(s, L"\n", L" ");
+        }
         if (re::match(s, LR"(\w+/.*)"))
             return buffer->clear();
         s = re::sub(s, LR"(<color=#[\w\d]{6}>)");
@@ -2962,6 +3004,39 @@ struct emfuncinfoX
     emfuncinfo info;
 };
 static const emfuncinfoX emfunctionhooks_1[] = {
+    // Le Mirage Mystique
+    {0x81D08180, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f0100D2A02101C000, 0x0100E81024F40000ull, "1.0.0"}},
+    {0x81D081B0, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f0100D2A02101C000, 0x0100E81024F40000ull, "1.0.1"}},
+    // BLACK WOLVES SAGA -Weiβ und Schwarz-
+    {0x800981B0, {FULL_STRING | CODEC_UTF8, 0, 0, 0, F010049A022BA0000, 0x010049A022BA0000ull, "1.0.0"}},
+    // PSYCHIC ECLIPSE -reload-
+    {0x81541CB4, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, 0, 0x0100A0001B9F0000ull, "1.2.0"}},
+    {0x81544CD0, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, 0, 0x0100A0001B9F0000ull, "1.2.0"}},
+    // ファミコン探偵倶楽部 笑み男
+    {0x8002978C, {FULL_STRING | CODEC_UTF16, 0, 10, mages_readstring, F0100A9501759E000, 0x0100A9501759E000ull, "1.0.0"}},
+    // CHAOS;HEAD / CHAOS;CHILD らぶChu☆Chu！ DOUBLE PACK
+    {0x80032690, {FULL_STRING | CODEC_UTF16, 0, 9, mages_readstring, 0, 0x0100E8B024BE6001ull, "1.0.0"}},
+    {0x800724E0, {FULL_STRING | CODEC_UTF16, 0, 9, mages_readstring, 0, 0x0100E8B024BE6002ull, "1.0.0"}},
+    // CHAOS;CHILD
+    {0x80034450, {FULL_STRING | CODEC_UTF16, 0, 0, mages_readstring, 0, 0x01004620180D2000ull, "1.0.0"}},
+    // CHAOS;HEAD NOAH
+    {0x8003A250, {FULL_STRING | CODEC_UTF16, 0, 0, mages_readstring, 0, 0x0100D650180CA000ull, "1.0.0"}},
+    // この世の果てで恋を唄う少女ＹＵ－ＮＯ
+    {0x8003D3C4, {FULL_STRING | CODEC_UTF16, 0, 0, mages_readstring, 0, 0x0100B9B00C6A4000ull, "1.0.0"}},
+    {0x8003D414, {FULL_STRING | CODEC_UTF16, 0, 0, mages_readstring, 0, 0x0100B9B00C6A4000ull, "1.0.3"}},
+    // The Charming Empire
+    {0x8019030C, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, F010042300C4F6000_1, 0x010006200949E000ull, "1.0.0"}},
+    {0x8012AA0C, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, F010042300C4F6000_1, 0x010006200949E000ull, "1.1.0"}},
+    // クドわふたー Converted Edition
+    {0x8016F7F0, {FULL_STRING | CODEC_UTF16, 8, 0, 0, F010048101D49E000, 0x0100F1B01C94E000ull, "1.0.0"}},
+    // The House in Fata Morgana - Dreams of the Revenants Edition
+    {0x8016E390, {FULL_STRING | CODEC_UTF16, 1, 0x14, 0, F0100C9001E10C000, 0x010016101100A000ull, "1.0.0"}},
+    // ハミダシクリエイティブ
+    {0x8003F6D4, {FULL_STRING | CODEC_UTF8, 1, 0, 0, 0, 0x01006FF014152000ull, "1.0.0"}},
+    // 君に惑い、君に溺れる。
+    {0x8011C76C, {FULL_STRING | CODEC_UTF8, 1, 0, 0, F0100BDD01AAE4000, 0x010079D02431E000ull, "1.0.0"}},
+    // 千銃士:Rhodoknight
+    {0x81EAB6B4, {FULL_STRING | CODEC_UTF16, 0, 0x14, 0, f010061A01C1CE000, 0x01001D402587E000ull, "1.0.0"}},
     // Dreamin' Her -僕は、彼女の夢を見る。-
     {0x80126E10, {FULL_STRING | CODEC_UTF8, 8, 0, 0, F0100943010310000, 0x01003000276E4000ull, "1.0.0"}},
     {0x80126D44, {FULL_STRING | CODEC_UTF8, 8, 0, 0, F0100943010310000, 0x01003000276E4000ull, "1.0.1"}},
@@ -3071,6 +3146,15 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     {0x81B72940, {CODEC_UTF16, 0, 0x14, 0, F010042300C4F6000_1, 0x0100C32023A1A000ull, "1.0.0"}},
     // うたの☆プリンスさまっ♪Amazing Aria & Sweet Serenade LOVE
     {0x80038B34, {0, 0, 0, 0, f0100D4300EBF8000, 0x0100D4300EBF8000ull, "1.0.0"}},
+    // うたの☆プリンスさまっ♪ Repeat LOVE
+    {0x800374a0, {0, 0, 0, 0, F0100068019996000, 0x010024200E00A000ull, "1.0.0"}},
+    {0x8002ea08, {0, 0, 0, 0, F0100068019996000, 0x010024200E00A000ull, "1.0.0"}},
+    // うたの☆プリンスさまっ♪Debut
+    {0x800104C4, {USING_CHAR | DATA_INDIRECT, 0, 0, 0, 0, 0x010088200EFE8000ull, "1.0.0"}},
+    // うたの☆プリンスさまっ♪All Star
+    {0x800102E4, {USING_CHAR | DATA_INDIRECT, 0, 0, 0, 0, 0x0100B3E0149FC000ull, "1.0.0"}},
+    // うたの☆プリンスさまっ♪All Star After Secret
+    {0x800586D4, {FULL_STRING, 0, 0, T01008030149FE000, 0, 0x01008030149FE000ull, "1.0.0"}},
     // 連呪
     {0x83700E60, {CODEC_UTF16, 0, 0X14, 0, F01007FD0211DA000, 0x01007FD0211DA000ull, "1.0.0"}},
     // DIG-ROCK -Documentary of Youthful Sounds-
@@ -3165,8 +3249,10 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     {0x83470EA0, {CODEC_UTF16, 1, 0x14, 0, F010042300C4F6000_1, 0x01001A4021670000ull, "1.0.0"}},
     {0x83470ED0, {CODEC_UTF16, 1, 0x14, 0, F010042300C4F6000_1, 0x01001A4021670000ull, "1.0.2"}},
     // OVER REQUIEMZ
-    {0x8208F5C0, {CODEC_UTF16, 0, 0x14, 0, F0100E9801CAC2000, 0x0100E9801CAC2000ull, "1.0.0"}},
-    {0x8299E69C, {CODEC_UTF16, 0, 0x14, 0, F0100E9801CAC2000, 0x0100E9801CAC2000ull, "1.0.1"}},
+    {0x82341D2C, {CODEC_UTF16 | FULL_STRING, 0, 0x14, 0, F0100E9801CAC2000<true>, 0x0100859027B4C000ull, "1.0.0"}},
+    // OVER REQUIEMZ
+    {0x8208F5C0, {CODEC_UTF16 | FULL_STRING, 0, 0x14, 0, F0100E9801CAC2000, 0x0100E9801CAC2000ull, "1.0.0"}},
+    {0x8299E69C, {CODEC_UTF16 | FULL_STRING, 0, 0x14, 0, F0100E9801CAC2000, 0x0100E9801CAC2000ull, "1.0.1"}},
     {0x8299F9B0, {CODEC_UTF16 | FULL_STRING, 0, 0x14, 0, F0100E9801CAC2000, 0x0100E9801CAC2000ull, "1.0.1"}},
     // Memories Off
     {0x8003eeac, {CODEC_UTF16, 0, 0, mages_readstring, 0, 0x0100978013276000ull, "1.0.0"}},
@@ -3605,9 +3691,6 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     {0x81b1c68c, {CODEC_UTF16, 0, 0X14, 0, F010094601D910000, 0x010094601D910000ull, "1.0.1"}}, // choice1
     {0x81b1c664, {CODEC_UTF16, 0, 0X14, 0, F010094601D910000, 0x010094601D910000ull, "1.0.1"}}, // choice2
     {0x81b1e5b0, {CODEC_UTF16, 3, 0X14, 0, F010094601D910000, 0x010094601D910000ull, "1.0.1"}}, // dialogue
-    // うたの☆プリンスさまっ♪ Repeat LOVE
-    {0x800374a0, {0, 0, 0, 0, F0100068019996000, 0x010024200E00A000ull, "1.0.0"}}, // Main Text + Name,sjis
-    {0x8002ea08, {0, 0, 0, 0, F0100068019996000, 0x010024200E00A000ull, "1.0.0"}}, // Choices,sjis
     // ワンド オブ フォーチュン Ｒ～
     {0x81ed0580, {CODEC_UTF16, 0, 0, ReadUnityString, F0100DA201E0DA000, 0x01000C7019E1C000ull, "1.0.0"}}, // dialogue
     {0x81f96bac, {CODEC_UTF16, 0, 0, ReadUnityString, F0100DA201E0DA000, 0x01000C7019E1C000ull, "1.0.0"}}, // name
@@ -4186,8 +4269,8 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     {0x81729520, {CODEC_UTF16, 1, 0x14, 0, F0100DEF01D0C6000_2, 0x0100DEF01D0C6000ull, "1.0.0"}},
     {0x83375938, {CODEC_UTF16, 0, 0, T0100DEF01D0C6000_2, 0, 0x0100DEF01D0C6000ull, "1.0.0"}},
     // Dance with Devils
-    {0x81616034, {CODEC_UTF16, 0, 0x14, 0, F01004E5017C54000, 0x01004E5017C54000ull, "1.0.0"}},
-    {0x8185a800, {CODEC_UTF16, 0, 0x14, 0, F01004E5017C54000, 0x01004E5017C54000ull, "1.0.0"}},
+    {0x81616034, {CODEC_UTF16 | FULL_STRING, 0, 0x14, 0, F01004E5017C54000, 0x01004E5017C54000ull, "1.0"}},
+    {0x8185a800, {CODEC_UTF16 | FULL_STRING, 0, 0x14, 0, F01004E5017C54000, 0x01004E5017C54000ull, "1.0"}},
     // My9Swallows TOPSTARS LEAGUE
     {0x818554ac, {CODEC_UTF16, 0, 0x14, 0, F01003BB01DF54000, 0x01003BB01DF54000ull, "1.0.0"}},
     {0x817b76d4, {CODEC_UTF16, 0, 0x14, 0, F01003BB01DF54000, 0x01003BB01DF54000ull, "1.0.0"}},
@@ -4215,9 +4298,9 @@ static const emfuncinfoX emfunctionhooks_1[] = {
     {0x21a3e0, {0, 0, 0, 0, F0100E4000F616000, 0x0100E4000F616000ull, "1.0.0"}},
     // ひめひび -Princess Days-
     {0x20d7b8, {0, 0, 0, 0, F0100E4000F616000, 0x0100F8D0129F4000ull, "1.0.0"}},
-    {0x20da9c, {0, 0, 0, 0, F0100E4000F616000, 0x0100E4000F616000ull, "1.0.0"}},
+    {0x20da9c, {0, 0, 0, 0, F0100E4000F616000, 0x0100F8D0129F4000ull, "1.0.0"}},
     {0x20d834, {0, 0, 0, 0, F0100E4000F616000, 0x0100F8D0129F4000ull, "1.0.1"}},
-    {0x20dae8, {0, 0, 0, 0, F0100E4000F616000, 0x0100E4000F616000ull, "1.0.1"}},
+    {0x20dae8, {0, 0, 0, 0, F0100E4000F616000, 0x0100F8D0129F4000ull, "1.0.1"}},
     // オホーツクに消ゆ ～追憶の流氷・涙のニポポ人形～
     {0x83d4bda0, {CODEC_UTF16, 1, 0x14, 0, F010044701E9BC000, 0x010044701E9BC000ull, "1.2.0"}},
     {0x83d59320, {CODEC_UTF16, 0, 0x14, 0, F010044701E9BC000, 0x010044701E9BC000ull, "1.2.0"}},

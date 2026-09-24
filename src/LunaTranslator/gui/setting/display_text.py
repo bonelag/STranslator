@@ -1,11 +1,12 @@
 from qtsymbols import *
 import functools
 import gobject, os
-from myutils.config import globalconfig, static_data
+from myutils.config import globalconfig, static_data, ui_settings
 from myutils.wrapper import tryprint
 from myutils.utils import translate_exits, _TR, getannotatedapiname
 from gui.usefulwidget import (
     getsimplecombobox,
+    D_getsimplecombobox,
     Singleton,
     saveposwindow,
     D_getspinbox,
@@ -13,10 +14,12 @@ from gui.usefulwidget import (
     getboxlayout,
     getboxwidget,
     D_getcolorbutton,
-    getcolorbutton,
+    ColorButton,
     saveposwindow,
+    create_centered_rect,
     listediter,
     getIconButton,
+    D_getIconSwitch,
     getsimpleswitch,
     D_getsimpleswitch,
     FocusFontCombo,
@@ -32,30 +35,24 @@ from gui.usefulwidget import (
 from gui.dynalang import LPushButton, LFormLayout
 
 
-def __changeuibuttonstate(self, x):
+def __changeuibuttonstate(x):
     gobject.base.translation_ui.refreshtoolicon()
     gobject.base.translation_ui.translate_text.showhideorigin(x)
-    try:
-        self.fenyinsettings.setEnabled(x)
-    except:
-        pass
-
-
-def changeshowerrorstate(self, x):
-    gobject.base.translation_ui.translate_text.showhideerror(x)
+    gobject.base.fenyinsettings.emit(x)
+    gobject.base.fencisettings.emit(x)
 
 
 def mayberealtimesetfont(_=None):
     gobject.base.translation_ui.translate_text.setfontstyle()
 
 
-def createtextfontcom(key):
+def createtextfontcom(key, df):
     def _f(key, x):
         globalconfig[key] = x
         mayberealtimesetfont()
 
-    font_comboBox = FocusFontCombo()
-    font_comboBox.setCurrentFont(QFont(globalconfig[key]))
+    font_comboBox = FocusFontCombo(sizeX=True)
+    font_comboBox.setCurrentFont(QFont(globalconfig.get(key, df)))
     font_comboBox.currentTextChanged.connect(functools.partial(_f, key))
     return font_comboBox
 
@@ -79,7 +76,14 @@ class extrahtml(saveposwindow):
             ff.write(self.vistext.toPlainText())
 
     def __init__(self, parent, fn, fneg, tester) -> None:
-        super().__init__(parent, poslist=globalconfig["geo_extrahtml"])
+        super().__init__(
+            parent,
+            posinit=gobject.tempconfig.get(
+                "geo_extrahtml",
+                create_centered_rect(600, 400, gobject.base.settin_ui).getRect(),
+            ),
+            possave=functools.partial(gobject.tempconfig.__setitem__, "geo_extrahtml"),
+        )
         self.setWindowTitle("附加HTML")
         self.tester = tester
         self.fneg = fneg
@@ -153,7 +157,7 @@ def createinternalfontsettings(self, forml: LFormLayout, group, _type):
         elif key in ["width_rate", "shadowR"]:
             continue
         if _type == "colorselect":
-            lineW = getcolorbutton(
+            lineW = ColorButton(
                 self,
                 dd,
                 key,
@@ -188,16 +192,6 @@ class otherdisplaysetting(PopupWidget):
         super().__init__(parent)
         form = LFormLayout(self)
         form.addRow(
-            "显示顺序",
-            getsimplecombobox(
-                ["原文_翻译", "翻译_原文"],
-                globalconfig,
-                "displayrank",
-                callback=gobject.base.translation_ui.translate_text.setdisplayrank,
-                default=0,
-            ),
-        )
-        form.addRow(
             "显示方向",
             getsimplecombobox(
                 ["横向", "竖向"],
@@ -207,14 +201,6 @@ class otherdisplaysetting(PopupWidget):
                 default=False,
             ),
         )
-        # form.addRow(
-        #     "显示单词信息_在WebView2内显示",
-        #     getsimpleswitch(
-        #         globalconfig,
-        #         "word_hover_action_usewb2",
-        #         callback=gobject.base.translation_ui.translate_text.setwordhoveruse,
-        #     ),
-        # )
         self.display()
 
 
@@ -237,6 +223,7 @@ def resetgroudswitchcallback(self, group):
             globalconfig,
             "useextrahtml",
             callback=lambda x: gobject.base.translation_ui.translate_text.textbrowser.loadex(),
+            default=False,
         )
         _btn2 = getIconButton(
             callback=functools.partial(Exteditor, self),
@@ -292,10 +279,6 @@ def resetgroudswitchcallback(self, group):
         )
     )
     gobject.base.translation_ui.translate_text.loadinternal(shoudong=True)
-    visengine_internal = ["textbrowser", "webview"]
-    self.seletengeinecombo.setCurrentIndex(
-        visengine_internal.index(globalconfig["rendertext_using"])
-    )
 
 
 def creategoodfontwid(self):
@@ -308,7 +291,7 @@ def creategoodfontwid(self):
 
 def _createseletengeinecombo(self):
 
-    self.seletengeinecombo = getsimplecombobox(
+    seletengeinecombo = getsimplecombobox(
         ["Qt", "Webview2"],
         globalconfig,
         "rendertext_using",
@@ -316,7 +299,8 @@ def _createseletengeinecombo(self):
         callback=functools.partial(resetgroudswitchcallback, self),
         static=True,
     )
-    return self.seletengeinecombo
+    gobject.base.connectsignal(gobject.base.switchdisplayengine, seletengeinecombo.setCurrentData)
+    return seletengeinecombo
 
 
 def GetFormForLineHeight(parent, dic, callback, wide=False):
@@ -398,21 +382,21 @@ class TextAreaBack(NQGroupBox):
             "颜色",
             getboxlayout(
                 [
-                    getcolorbutton(
+                    ColorButton(
                         self,
-                        globalconfig,
+                        ui_settings,
                         "text_area_background_color",
                         callback=gobject.base.translation_ui.translate_text.setTextAreaBackStyle,
-                        default="#ff0000",
+                        default="pink",
                     ),
                     getsmalllabel("不透明度"),
                     getspinbox(
                         0,
                         100,
-                        globalconfig,
+                        ui_settings,
                         "text_area_background_alpha",
                         callback=gobject.base.translation_ui.translate_text.setTextAreaBackStyle,
-                        default=50,
+                        default=85,
                     ),
                 ]
             ),
@@ -427,7 +411,7 @@ class TextAreaBack(NQGroupBox):
                 getspinbox(
                     0,
                     50,
-                    globalconfig,
+                    ui_settings,
                     key,
                     double=True,
                     step=0.2,
@@ -454,27 +438,27 @@ def vistranslate_rank(self):
     )
 
 
-def __changeuibuttonstate2(self, x):
+def __changeuibuttonstate2(*_):
     gobject.base.translation_ui.refreshtoolicon()
     gobject.base.maybeneedtranslateshowhidetranslate()
 
 
-def _showhidefy(self):
+def _showhidefy():
     btn = getsimpleswitch(
         globalconfig,
         "showfanyi",
-        callback=functools.partial(__changeuibuttonstate2, self),
+        callback=__changeuibuttonstate2,
         default=True,
     )
     gobject.base.show_fany_switch.connect(btn.setChecked)
     return btn
 
 
-def __xianshi(self):
+def __xianshi():
     btn = getsimpleswitch(
         globalconfig,
         "isshowrawtext",
-        callback=functools.partial(__changeuibuttonstate, self),
+        callback=__changeuibuttonstate,
         default=True,
     )
     gobject.base.show_original_switch.connect(btn.setChecked)
@@ -487,37 +471,20 @@ def xianshigrid_style(self):
             dict(
                 title="原文",
                 type="grid",
-                hiderows=[2],
+                hiderows=[1],
                 name="yuanwenobject",
                 parent=self,
                 grid=(
                     [
-                        "字体",
-                        (
-                            getboxlayout(
-                                [
-                                    functools.partial(
-                                        createtextfontcom,
-                                        "fonttype",
-                                    ),
-                                    "",
-                                    "颜色",
-                                    D_getcolorbutton(
-                                        self,
-                                        globalconfig,
-                                        "rawtextcolor",
-                                        callback=gobject.base.translation_ui.translate_text.setcolorstyle,
-                                    ),
-                                ]
-                            ),
-                            0,
-                        ),
+                        getsmalllabel("显示"),
+                        __xianshi,
                         "",
-                        "显示",
-                        functools.partial(__xianshi, self),
-                    ],
-                    [
-                        "大小",
+                        getsmalllabel("字体"),
+                        functools.partial(
+                            createtextfontcom,
+                            "fonttype",
+                            gobject.tempconfig.get("fonttype", ""),
+                        ),
                         D_getspinbox(
                             5,
                             100,
@@ -527,20 +494,38 @@ def xianshigrid_style(self):
                             callback=mayberealtimesetfont,
                             default=16,
                         ),
-                        "",
-                        "加粗",
-                        D_getsimpleswitch(
+                        D_getcolorbutton(
+                            self,
+                            globalconfig,
+                            "rawtextcolor",
+                            callback=gobject.base.translation_ui.translate_text.setcolorstyle,
+                            default="#000000",
+                        ),
+                        D_getIconSwitch(
                             globalconfig,
                             "showbold",
                             callback=mayberealtimesetfont,
+                            tips="加粗",
                             default=False,
+                            icon="fa.bold",
+                        ),
+                        D_getIconSwitch(
+                            globalconfig,
+                            "showitalic",
+                            callback=mayberealtimesetfont,
+                            tips="倾斜",
+                            default=False,
+                            icon="fa.italic",
                         ),
                         "",
-                        "间距",
-                        D_getIconButton(
-                            callback=lambda: self.yuanwenobject.layout().setRowVisible(
-                                2, not self.yuanwenobject.layout().rowVisible(2)
+                        getsmalllabel("间距"),
+                        D_getIconSwitch(
+                            icon="fa.gear",
+                            checkablechangecolor=False,
+                            callback=lambda x: self.yuanwenobject.layout().setRowVisible(
+                                1, x
                             ),
+                            tips="间距_设置"
                         ),
                     ],
                     [(functools.partial(Spacesetting, self, False), 0)],
@@ -551,36 +536,20 @@ def xianshigrid_style(self):
             dict(
                 title="译文",
                 type="grid",
-                hiderows=[2],
+                hiderows=[1],
                 name="yiwenobject",
                 parent=self,
                 grid=(
                     [
-                        "字体",
-                        (
-                            getboxlayout(
-                                [
-                                    functools.partial(
-                                        createtextfontcom,
-                                        "fonttype2",
-                                    ),
-                                    "",
-                                    "颜色",
-                                    D_getIconButton(
-                                        icon="fa.paint-brush",
-                                        callback=gobject.base.switchtotspage.emit,
-                                        tips="颜色",
-                                    ),
-                                ]
-                            ),
-                            0,
-                        ),
+                        getsmalllabel("显示"),
+                        _showhidefy,
                         "",
-                        "显示",
-                        functools.partial(_showhidefy, self),
-                    ],
-                    [
-                        "大小",
+                        getsmalllabel("字体"),
+                        functools.partial(
+                            createtextfontcom,
+                            "fonttype2",
+                            gobject.tempconfig.get("fonttype2", ""),
+                        ),
                         D_getspinbox(
                             1,
                             100,
@@ -590,20 +559,36 @@ def xianshigrid_style(self):
                             callback=mayberealtimesetfont,
                             default=16,
                         ),
-                        "",
-                        "加粗",
-                        D_getsimpleswitch(
+                        D_getIconButton(
+                            icon="fa.paint-brush",
+                            callback=gobject.base.switchtotspage.emit,
+                            tips="颜色",
+                        ),
+                        D_getIconSwitch(
                             globalconfig,
                             "showbold_trans",
                             callback=mayberealtimesetfont,
+                            tips="加粗",
                             default=False,
+                            icon="fa.bold",
+                        ),
+                        D_getIconSwitch(
+                            globalconfig,
+                            "showitalic_trans",
+                            callback=mayberealtimesetfont,
+                            tips="倾斜",
+                            default=False,
+                            icon="fa.italic",
                         ),
                         "",
-                        "间距",
-                        D_getIconButton(
-                            callback=lambda: self.yiwenobject.layout().setRowVisible(
-                                2, not self.yiwenobject.layout().rowVisible(2)
+                        getsmalllabel("间距"),
+                        D_getIconSwitch(
+                            icon="fa.gear",
+                            checkablechangecolor=False,
+                            callback=lambda x: self.yiwenobject.layout().setRowVisible(
+                                1, x
                             ),
+                            tips="间距_设置"
                         ),
                     ],
                     [(functools.partial(Spacesetting, self, True), 0)],
@@ -626,23 +611,7 @@ def xianshigrid_style(self):
                             default=True,
                         ),
                         "",
-                        # "显示错误信息",
-                        # D_getsimpleswitch(
-                        #     globalconfig,
-                        #     "showtranexception",
-                        #     callback=lambda x: changeshowerrorstate(self, x),
-                        #     default=True,
-                        # ),
                         "",
-                        "",
-                        "",
-                        "",
-                        "收到翻译时才刷新",
-                        D_getsimpleswitch(
-                            globalconfig, "refresh_on_get_trans", default=False
-                        ),
-                    ],
-                    [
                         "显示翻译器名称",
                         D_getsimpleswitch(
                             globalconfig,
@@ -651,21 +620,45 @@ def xianshigrid_style(self):
                             default=False,
                         ),
                         "",
+                        "",
+                        "收到翻译时才刷新",
+                        D_getsimpleswitch(
+                            globalconfig, "refresh_on_get_trans", default=False
+                        ),
+                    ],
+                    [
                         "固定翻译显示顺序",
-                        D_getsimpleswitch(globalconfig, "fix_translate_rank"),
+                        D_getsimpleswitch(
+                            globalconfig, "fix_translate_rank", default=False
+                        ),
                         D_getIconButton(functools.partial(vistranslate_rank, self)),
+                        "",
+                        "显示顺序",
+                        (
+                            D_getsimplecombobox(
+                                ["原文_翻译", "翻译_原文"],
+                                globalconfig,
+                                "displayrank",
+                                callback=gobject.base.translation_ui.translate_text.setdisplayrank,
+                                default=0,
+                            ),
+                            2,
+                        ),
                         "",
                         "文字区域背景",
                         D_getsimpleswitch(
-                            globalconfig,
+                            ui_settings,
                             "text_area_background",
                             callback=gobject.base.translation_ui.translate_text.showtextareabackground,
                             default=False,
                         ),
-                        D_getIconButton(
-                            callback=lambda: self.otherobject.layout().setRowVisible(
-                                2, not self.otherobject.layout().rowVisible(2)
+                        D_getIconSwitch(
+                            icon="fa.gear",
+                            checkablechangecolor=False,
+                            callback=lambda x: self.otherobject.layout().setRowVisible(
+                                2, x
                             ),
+                            tips="文字区域背景_设置"
                         ),
                     ],
                     [(functools.partial(TextAreaBack, self), 0)],

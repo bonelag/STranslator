@@ -127,28 +127,26 @@ def _ocr_focus_switch(to):
     for i in range(__l):
         curri = (__l + curr + i + to) % __l
         r = gobject.base.textsource.ranges[curri]
-        if r.range_ui.getrect():
+        if r.range_ui.getrect().isValid():
             r.range_ui.isfocus = True
             gobject.base.translation_ui.startTranslater()
             break
 
 
-def _calc_dis_and_centerdis(rect, point):
-
-    (x1, y1), (x2, y2) = rect
+def _calc_dis_and_centerdis(rect: QRect, point):
     px, py = point.x, point.y
 
-    x1, x2 = sorted([x1, x2])
-    y1, y2 = sorted([y1, y2])
+    x1, x2 = rect.left(), rect.right()
+    y1, y2 = rect.top(), rect.bottom()
 
-    if x1 <= px <= x2 and y1 <= py <= y2:
+    if rect.contains(QPoint(px, py)):
         edge_dist = 0
     else:
         dx = max(x1 - px, 0, px - x2)
         dy = max(y1 - py, 0, py - y2)
         edge_dist = math.hypot(dx, dy)
 
-    cx, cy = (x1 + x2) / 2, (y1 + y2) / 2
+    cx, cy = rect.center().x(), rect.center().y()
     center_dist = math.hypot(px - cx, py - cy)
 
     return edge_dist, center_dist
@@ -168,7 +166,7 @@ def _ocr_focus_switch_near():
     curr = windows.GetCursorPos()
     for rr in gobject.base.textsource.ranges:
         r = rr.range_ui.getrect()
-        if not r:
+        if not r.isValid():
             continue
         d, cd = _calc_dis_and_centerdis(r, curr)
         if d < dist[0]:
@@ -223,6 +221,11 @@ def registrhotkeys(self):
     self.referlabels_data = {}
     self.registok = {}
     self.bindfunctions = {
+        "croprecord": lambda: gobject.base.searchwordW.ankiwindow.recordvediohotkeycallback(True),
+        "recordwindow": lambda: gobject.base.searchwordW.ankiwindow.recordvediohotkeycallback(False),
+        "playlastrecord": lambda: gobject.base.audioplayer.play(
+            gobject.base.searchwordW.autorecorder.get(), force=True
+        ),
         "_1": gobject.base.translation_ui.startTranslater,
         "_2": gobject.base.translation_ui.changeTranslateMode,
         "_3": gobject.base.settin_ui_showsignal.emit,
@@ -238,7 +241,9 @@ def registrhotkeys(self):
             gobject.base.translation_ui.enterfunction(),
         ),
         "52": lambda: (
-            globalconfig.__setitem__("hidetools", not globalconfig.get("hidetools", False)),
+            globalconfig.__setitem__(
+                "hidetools", not globalconfig.get("hidetools", False)
+            ),
             gobject.base.translation_ui.enterfunction(),
         ),
         "_10": gobject.base.translation_ui.showsavegame_signal.emit,
@@ -267,7 +272,7 @@ def registrhotkeys(self):
             QPoint()
         ),
         "36": lambda: gobject.base.textgetmethod(NativeUtils.ClipBoard.text, False),
-        "37": lambda: gobject.base.searchwordW.search_word.emit(safeGet(), None, False),
+        "37": lambda: gobject.base.searchwordW.search_word.emit(safeGet()),
         "39": lambda: gobject.base.searchwordW.ocr_once_signal.emit(),
         "38": lambda: gobject.base.textgetmethod(safeGet(), False),
         "40": lambda: gobject.base.searchwordW.search_word_in_new_window.emit(
@@ -287,6 +292,7 @@ def registrhotkeys(self):
         "_53": close_all_overlays,
         "51": lambda: gobject.base.translation_ui.changemousetransparentstate(1),
         "disableothers": functools.partial(__enable, self, exception="disableothers"),
+        "giveupfocus": gobject.base.giveupfocus,
     }
 
     for name in globalconfig["myquickkeys"]:
@@ -318,6 +324,7 @@ hotkeys = [
             "53",
             "45",
             "50",
+            "giveupfocus",
         ],
     ],
     ["HOOK", ["_11", "_12"]],
@@ -328,7 +335,7 @@ hotkeys = [
     ["剪贴板", ["36", "_4", "_28"]],
     ["TTS", ["_32", "_7", "_7_1"]],
     ["游戏", ["_10", "_15", "_21", "_22", "43", "41", "42"]],
-    ["查词", ["37", "40", "39", "_29", "_30", "_35", "_33"]],
+    ["查词", ["37", "40", "39"]],
 ]
 
 
@@ -489,13 +496,13 @@ def setTab_quick(self, l: QVBoxLayout):
     do()
 
 
-def setTab_quick_lazy(self, ls):
+def setTab_quick_lazy(self, ls, doc=True):
     grids = []
 
     for name in ls:
         d = globalconfig["quick_setting"]["all"][name]
-        l = [
-            D_getdoclink("fastkeys.html#anchor-" + name),
+        l = [D_getdoclink("fastkeys.html#anchor-" + name)] if doc else []
+        l += [
             (d["name"], 2),
             D_getsimpleswitch(
                 d,

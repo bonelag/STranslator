@@ -1,11 +1,12 @@
-import windows, os, NativeUtils, functools, winreg
+import windows, os, NativeUtils, functools
 from qtsymbols import *
 from myutils.config import savehook_new_data, get_launchpath, globalconfig, _TR, relpath
-from myutils.hwnd import subprochiderun
-from gobject import sys_le_xp, runtime_bit_64
+from LunaSubProcess import LunaSubProcess
+from gobject import sys_le_xp
 from gui.usefulwidget import getlineedit, getsimplecombobox, getsimplepatheditor
 from traceback import print_exc
 import xml.etree.ElementTree as ET
+from myutils.regedit import CURRENT_USER, LOCAL_MACHINE
 
 
 class Launcher:
@@ -19,30 +20,11 @@ class Launcher:
 
 def shellexecutehelper(_, op, exe, args, dirpath, bshow):
     # 主程序中的SetDllDirectoryW会被继承，导致执行错误。
-    subprochiderun(
-        [
-            r".\files\LunaSubprocess{}.exe".format(("32", "64")[runtime_bit_64]),
-            "shellexecutehelper",
-            op,
-            exe,
-            args,
-            dirpath,
-            str(bshow),
-        ],
-        run=False,
-    )
+    LunaSubProcess.shellexecutehelper(op, exe, args, dirpath, bshow)
 
 
 def createprocesshelper(_, cmd, _2, _3, _4, _5, _6, dirpath, _7):
-    subprochiderun(
-        [
-            r".\files\LunaSubprocess{}.exe".format(("32", "64")[runtime_bit_64]),
-            "createprocesshelper",
-            cmd,
-            dirpath,
-        ],
-        run=False,
-    )
+    LunaSubProcess.createprocesshelper(cmd, dirpath)
 
 
 class LEbase(Launcher):
@@ -73,16 +55,12 @@ class LEbase(Launcher):
 
 
 def findsyslex(clsid, exe, xml):
-    for kk in (winreg.HKEY_CURRENT_USER, winreg.HKEY_LOCAL_MACHINE):
+    for kk in (CURRENT_USER, LOCAL_MACHINE):
         try:
-            k = winreg.OpenKeyEx(
-                kk,
-                r"Software\Classes\CLSID\{}\InprocServer32".format(clsid),
-                0,
-                winreg.KEY_QUERY_VALUE,
+            k = kk.open(
+                r"Software\Classes\CLSID\{}\InprocServer32".format(clsid), query=True
             )
-            base: str = winreg.QueryValueEx(k, "CodeBase")[0]
-            winreg.CloseKey(k)
+            base: str = k.query("CodeBase")
             if base.startswith("file:///"):
                 base = base[len("file:///") :]
             __ = os.path.join(os.path.dirname(base), exe)

@@ -1,9 +1,9 @@
 from qtsymbols import *
 import functools
 import gobject, NativeUtils
-from myutils.config import globalconfig
+from myutils.config import globalconfig, ui_settings
 from gui.usefulwidget import (
-    getcolorbutton,
+    ColorButton,
     getspinbox,
     getsimpleswitch,
     getsmalllabel,
@@ -45,28 +45,40 @@ class DraggableQWidget(QWidget):
 
 
 def createsomecontrols(
-    callbackR, callbackDWM, kR, kRsys, kRsysDf, kDWM, kshadow, needcheck=True
+    callbackR,
+    callbackDWM,
+    kR,
+    kRsys,
+    kRsysDf,
+    kDWM,
+    kshadow,
+    needcheck=True,
+    dic=None,
+    kRdf=0,
 ):
+    if dic is None:
+        dic = globalconfig
+
     def ___(callbackX, _):
         callbackX()
 
     spin1 = getspinbox(
-        0, 50, globalconfig, kR, callback=functools.partial(___, callbackR)
+        0, 50, dic, kR, callback=functools.partial(___, callbackR), default=kRdf
     )
     sw = None
     effectlayout = None
     if needcheck:
 
         def __vRsys(kRsys, kRsysDf):
-            return gobject.sys_ge_win_11 and globalconfig.get(kRsys, kRsysDf)
+            return gobject.sys_ge_win_11 and dic.get(kRsys, kRsysDf)
 
         vRsys = functools.partial(__vRsys, kRsys, kRsysDf)
 
         def __vR(kDWM, vRsys):
-            return globalconfig.get(kDWM, 0) == 0 and not vRsys()
+            return dic.get(kDWM, 0) == 0 and not vRsys()
 
         def __yinyinguse(kDWM, vRsys):
-            return globalconfig.get(kDWM, 0) != 0 and not vRsys()
+            return dic.get(kDWM, 0) != 0 and not vRsys()
 
         vR = functools.partial(__vR, kDWM, vRsys)
         if not vR():
@@ -74,7 +86,7 @@ def createsomecontrols(
         yinyinguse = functools.partial(__yinyinguse, kDWM, vRsys)
         __shadowxx = getsmalllabel("阴影")()
         __shadowxx2 = getsimpleswitch(
-            globalconfig,
+            dic,
             kshadow,
             callback=functools.partial(___, callbackDWM),
             default=True,
@@ -96,7 +108,7 @@ def createsomecontrols(
 
         if gobject.sys_ge_win_11:
             sw = getsimpleswitch(
-                globalconfig,
+                dic,
                 kRsys,
                 default=kRsysDf,
                 callback=functools.partial(
@@ -129,7 +141,7 @@ def createsomecontrols(
             [
                 getsimplecombobox(
                     ["Disable", "Acrylic", "Aero"],
-                    globalconfig,
+                    dic,
                     kDWM,
                     callback=functools.partial(
                         __cb,
@@ -152,38 +164,40 @@ def createsomecontrols(
 class dialog_syssetting(LDialog):
     def __init__(self, parent: "WordViewTooltip") -> None:
         super().__init__(parent, Qt.WindowType.WindowCloseButtonHint)
-        self.setWindowTitle("其他设置")
+        self.setWindowTitle("设置")
         formLayout = LFormLayout(self)
 
         formLayout.addRow(
             "自动朗读",
-            getsimpleswitch(globalconfig, "is_search_word_auto_tts_2"),
+            getsimpleswitch(globalconfig, "is_search_word_auto_tts_2", default=False),
         )
         focus = getsimpleswitch(
-            globalconfig,
+            ui_settings,
             "WordViewTooltipHideFocus",
             callback=lambda x: parent.closebutton.setVisible(
                 not (
-                    globalconfig["WordViewTooltipHideFocus"]
-                    or globalconfig["WordViewTooltipHideLeave"]
+                    ui_settings.get("WordViewTooltipHideFocus", True)
+                    or ui_settings.get("WordViewTooltipHideLeave", False)
                 )
             ),
+            default=True,
         )
-        focus.setEnabled(not globalconfig["WordViewTooltipHideLeave"])
+        focus.setEnabled(not ui_settings.get("WordViewTooltipHideLeave", False))
         formLayout.addRow(
             "鼠标离开时关闭",
             getsimpleswitch(
-                globalconfig,
+                ui_settings,
                 "WordViewTooltipHideLeave",
                 callback=lambda x: (
                     focus.setEnabled(not x),
                     parent.closebutton.setVisible(
                         not (
-                            globalconfig["WordViewTooltipHideFocus"]
-                            or globalconfig["WordViewTooltipHideLeave"]
+                            ui_settings.get("WordViewTooltipHideFocus", True)
+                            or ui_settings.get("WordViewTooltipHideLeave", False)
                         )
                     ),
                 ),
+                default=False,
             ),
         )
         formLayout.addRow("失去焦点时关闭", focus)
@@ -191,9 +205,10 @@ class dialog_syssetting(LDialog):
         spin = getspinbox(
             0,
             50,
-            globalconfig,
+            ui_settings,
             "WordViewTooltipBorder",
             callback=lambda _: parent.doResize(),
+            default=5,
         )
         formLayout.addRow("边距", spin)
 
@@ -205,27 +220,31 @@ class dialog_syssetting(LDialog):
             gobject.sys_ge_win_11,
             "WordViewTooltipDWM",
             "WordViewTooltipDWM_1",
+            kRdf=4,
+            dic=ui_settings,
         )
         formLayout.addRow("圆角", spin1)
 
         formLayout.addRow("窗口特效", lay)
-        color11 = getcolorbutton(
+        color11 = ColorButton(
             self,
-            globalconfig,
+            ui_settings,
             "WordViewTooltipColor",
             callback=lambda _: parent.setbgcolor(),
             alpha=True,
             tips="背景颜色",
             cantzeroalpha=True,
+            default="#c0ffc0ff",
         )
         formLayout.addRow("背景颜色", color11)
-        color1 = getcolorbutton(
+        color1 = ColorButton(
             self,
-            globalconfig,
+            ui_settings,
             "WordViewTooltipContentColor",
             callback=lambda _: parent.setbgcolor(),
             alpha=True,
             tips="内容背景颜色",
+            default="#c0ffffff",
         )
         formLayout.addRow("内容背景颜色", color1)
 
@@ -240,21 +259,23 @@ class WordViewTooltip(resizableframeless, DraggableQWidget):
 
     @property
     def gripSize(self):
-        return globalconfig["WordViewTooltipBorder"]
+        return ui_settings.get("WordViewTooltipBorder", 5)
 
     def leaveEvent(self, a0: QEvent):
-        if globalconfig["WordViewTooltipHideLeave"]:
+        if ui_settings.get("WordViewTooltipHideLeave", False):
             if not self.geometry().contains(QCursor.pos()):
                 self.close()
         return super().leaveEvent(a0)
 
     def focusOutEvent(self, a0):
-        if globalconfig["WordViewTooltipHideFocus"]:
+        if ui_settings.get("WordViewTooltipHideFocus", True):
             focused_widget = QApplication.focusWidget()
             if (
                 focused_widget
                 and focused_widget.window()
-                and (self in (focused_widget, focused_widget.window().parent() == self))
+                and (
+                    self in (focused_widget.window(), focused_widget.window().parent())
+                )
             ):
                 pass
             else:
@@ -287,34 +308,34 @@ class WordViewTooltip(resizableframeless, DraggableQWidget):
         NativeUtils.SetCornerNotRound(
             int(self.winId()),
             False,
-            globalconfig.get("WordViewTooltipRadiusSys", gobject.sys_ge_win_11),
+            ui_settings.get("WordViewTooltipRadiusSys", gobject.sys_ge_win_11),
         )
-        radiu_valid = globalconfig.get("WordViewTooltipDWM", 0) == 0 and not (
+        radiu_valid = ui_settings.get("WordViewTooltipDWM", 0) == 0 and not (
             gobject.sys_ge_win_11
-            and globalconfig.get("WordViewTooltipRadiusSys", gobject.sys_ge_win_11)
+            and ui_settings.get("WordViewTooltipRadiusSys", gobject.sys_ge_win_11)
         )
-        color = globalconfig["WordViewTooltipColor"]
-        r = globalconfig["WordViewTooltipRadius"]
+        color = ui_settings.get("WordViewTooltipColor", "#c0ffc0ff")
+        r = ui_settings.get("WordViewTooltipRadius", 4)
         self.w.setStyleSheet(r""" 
         QLabel{background: %s; 
         border-radius: %spx}
  """ % (color, r * radiu_valid))
         self.w2.setStyleSheet(r""" 
         QLabel{background: %s;border-radius: 0px; }
- """ % (globalconfig["WordViewTooltipContentColor"]))
+ """ % (ui_settings.get("WordViewTooltipContentColor", "#c0ffffff")))
 
     def seteffect(self):
-        if globalconfig.get("WordViewTooltipDWM", 0) == 0:
+        if ui_settings.get("WordViewTooltipDWM", 0) == 0:
             NativeUtils.clearEffect(int(self.winId()))
-        elif globalconfig.get("WordViewTooltipDWM", 0) == 1:
+        elif ui_settings.get("WordViewTooltipDWM", 0) == 1:
             NativeUtils.setAcrylicEffect(
                 int(self.winId()),
-                globalconfig.get("WordViewTooltipDWM_1", True),
+                ui_settings.get("WordViewTooltipDWM_1", True),
                 0x00FFFFFF,
             )
-        elif globalconfig.get("WordViewTooltipDWM", 0) == 2:
+        elif ui_settings.get("WordViewTooltipDWM", 0) == 2:
             NativeUtils.setAeroEffect(
-                int(self.winId()), globalconfig.get("WordViewTooltipDWM_1", True)
+                int(self.winId()), ui_settings.get("WordViewTooltipDWM_1", True)
             )
 
     def __load(self):
@@ -329,15 +350,26 @@ class WordViewTooltip(resizableframeless, DraggableQWidget):
         resizableframeless.__init__(
             self,
             parent,
-            Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint,
-            None,
+            flags=Qt.WindowType.FramelessWindowHint
+            | Qt.WindowType.WindowStaysOnTopHint,
         )
         self.__state = 0
-        gobject.base.hover_search_word.connect(self.searchword)
+        gobject.base.hover_search_word.connect(self.__hover_search_word)
         self.__f = QTimer(self)
         self.__f.setInterval(50)
         self.__f.timeout.connect(self.__detectkey)
         self.__savestatus = None
+
+    def __hover_search_word(self, object: "dict[str, object]"):
+        self.searchword(
+            word=object["word"],
+            sentence=object.get("sentence", None),
+            append=object.get("append", False),
+            fromhover=object.get("fromhover", False),
+            show=object.get("show", False),
+            force=object.get("force", False),
+            checklangs=object.get("checklangs", False),
+        )
 
     def Leave(self):
         self.__f.stop()
@@ -366,9 +398,8 @@ class WordViewTooltip(resizableframeless, DraggableQWidget):
         self.closebutton = getIconButton(
             icon="fa.times", callback=self.close, tips="关闭"
         )
-        if (
-            globalconfig["WordViewTooltipHideFocus"]
-            or globalconfig["WordViewTooltipHideLeave"]
+        if ui_settings.get("WordViewTooltipHideFocus", True) or ui_settings.get(
+            "WordViewTooltipHideLeave", False
         ):
             self.closebutton.hide()
         buttons.addWidget(self.closebutton)
@@ -430,10 +461,13 @@ class WordViewTooltip(resizableframeless, DraggableQWidget):
         )
 
     def __detectkey(self):
-        if not globalconfig["usesearchword_S_hover"]:
+        if not (
+            globalconfig.get("usesearchword_S", False)
+            and (globalconfig.get("searchword_S_mousetrigger", "left") == "hover")
+        ):
             self.__f.stop()
             return
-        result = gobject.base.checkkeypresssatisfy("searchword_S_hover", False)
+        result = gobject.base.checkkeypresssatisfy("searchword_S", False)
         result = result == -1 or result == True
         if result:
             self.__f.stop()
@@ -451,6 +485,7 @@ class WordViewTooltip(resizableframeless, DraggableQWidget):
         fromhover=False,
         show=False,
         force=False,
+        checklangs=False,
     ):
         self.__load()
         if self.__state != 2:
@@ -464,13 +499,13 @@ class WordViewTooltip(resizableframeless, DraggableQWidget):
                 self.__f.start()
                 return
         self.savepos = QCursor.pos()
-        if globalconfig["is_search_word_auto_tts_2"]:
+        if globalconfig.get("is_search_word_auto_tts_2", False):
             gobject.base.read_text(word)
         if append:
             word = self.view.currWord + word
         unuse = globalconfig[("ignoredict_S_click", "ignoredict_S_hover")[fromhover]]
         self.wordlabel.setText(word)
-        self.view.searchword(word, sentence, unuse=unuse)
+        self.view.searchword(word, sentence, unuse=unuse, checklangs=checklangs)
 
     def showresult(self):
         size = globalconfig.get("WordViewTooltip2")
@@ -487,7 +522,7 @@ class WordViewTooltip(resizableframeless, DraggableQWidget):
     def moveresult_1(self):
         if not self.isVisible():
             return
-        result = gobject.base.checkkeypresssatisfy("searchword_S_hover", False)
+        result = gobject.base.checkkeypresssatisfy("searchword_S", False)
         # 仅按着键盘时，才追踪，否则不要动。
         if result == True:
             self.move(limitpos(QCursor.pos(), self, QPoint(1, 10)))

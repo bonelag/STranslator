@@ -54,13 +54,13 @@ inline std::vector<StringT> strSplit_impl(const StringT &s, const StringT &delim
 template <class StringT>
 inline bool endWith_impl(const StringT &s, const StringT &s2)
 {
-  return (s.size() >= s2.size()) && (s.substr(s.size() - s2.size()) == s2);
+  return (s.size() >= s2.size()) && (s.compare(s.size() - s2.size(), s2.size(), s2) == 0);
 }
 
 template <class StringT>
 inline bool startWith_impl(const StringT &s, const StringT &s2)
 {
-  return (s.size() >= s2.size()) && (s.substr(0, s2.size()) == s2);
+  return (s.size() >= s2.size()) && (s.compare(0, s2.size(), s2) == 0);
 }
 
 bool all_ascii(const char *s, int maxsize) { return all_ascii_impl<char>(s, maxsize); }
@@ -107,16 +107,21 @@ std::optional<std::wstring> StringToWideString(std::string_view text, UINT encod
   {
     int _s = text.size();
     int _s2 = buffer.size();
-    auto h = LoadLibrary(TEXT("mlang.dll"));
-    if (h == 0)
-      return {};
-    auto ConvertINetMultiByteToUnicode = (CONVERTINETMULTIBYTETOUNICODE)GetProcAddress(h, "ConvertINetMultiByteToUnicode");
+    static auto ConvertINetMultiByteToUnicode = []
+    {
+      HMODULE h = LoadLibrary(TEXT("mlang.dll"));
+      return h ? (CONVERTINETMULTIBYTETOUNICODE)GetProcAddress(h, "ConvertINetMultiByteToUnicode") : nullptr;
+    }();
     if (ConvertINetMultiByteToUnicode == 0)
       return {};
     auto hr = ConvertINetMultiByteToUnicode(0, encoding, text.data(), &_s, buffer.data(), &_s2);
     if (SUCCEEDED(hr))
     {
-      return std::wstring(buffer.data(), _s2);
+      // S_FALSE 时 _s2 是所需大小，可能超过 buffer，必须截断避免越界读
+      if (_s2 < 0)
+        _s2 = 0;
+      size_t n = min((size_t)_s2, buffer.size());
+      return std::wstring(buffer.data(), n);
     }
     else
       return {};
@@ -169,16 +174,20 @@ std::string WideStringToString(std::wstring_view text, UINT cp)
   {
     int _s = text.size();
     int _s2 = buffer.size();
-    auto h = LoadLibrary(TEXT("mlang.dll"));
-    if (h == 0)
-      return {};
-    auto ConvertINetUnicodeToMultiByte = (CONVERTINETUNICODETOMULTIBYTE)GetProcAddress(h, "ConvertINetUnicodeToMultiByte");
+    static auto ConvertINetUnicodeToMultiByte = []
+    {
+      HMODULE h = LoadLibrary(TEXT("mlang.dll"));
+      return h ? (CONVERTINETUNICODETOMULTIBYTE)GetProcAddress(h, "ConvertINetUnicodeToMultiByte") : nullptr;
+    }();
     if (ConvertINetUnicodeToMultiByte == 0)
       return {};
     auto hr = ConvertINetUnicodeToMultiByte(0, cp, text.data(), &_s, buffer.data(), &_s2);
     if (SUCCEEDED(hr))
     {
-      return std::string(buffer.data(), _s2);
+      if (_s2 < 0)
+        _s2 = 0;
+      size_t n = min((size_t)_s2, buffer.size());
+      return std::string(buffer.data(), n);
     }
     else
       return {};
@@ -207,6 +216,7 @@ inline unsigned int convertUTF32ToUTF16(unsigned int cUTF32, unsigned int &h, un
 std::u32string utf16_to_utf32(std::wstring_view wsv)
 {
   std::u32string utf32String;
+  utf32String.reserve(wsv.size());
   for (size_t i = 0; i < wsv.size(); i++)
   {
     auto u16c = wsv[i];
@@ -229,6 +239,7 @@ std::u32string utf16_to_utf32(std::wstring_view wsv)
 std::wstring utf32_to_utf16(std::u32string_view sv)
 {
   std::wstring u16str;
+  u16str.reserve(sv.size() * 2);
   for (auto i = 0; i < sv.size(); i++)
   {
     unsigned h, l;
@@ -324,14 +335,14 @@ std::wstring acastw(const std::string &x)
     xx += c;
   return xx;
 }
-std::optional<std::wstring> commonparsestring(void *data, size_t length, void *php, DWORD df)
+std::optional<std::wstring> commonparsestring(const void *data, size_t length, void *php, DWORD df)
 {
   auto hp = (HookParam *)php;
   if (hp->type & CODEC_UTF16)
-    return std::wstring((wchar_t *)data, length / sizeof(wchar_t));
+    return std::wstring((const wchar_t *)data, length / sizeof(wchar_t));
   else if (hp->type & CODEC_UTF32)
-    return utf32_to_utf16(std::u32string_view((char32_t *)data, length / sizeof(char32_t)));
-  else if (auto converted = StringToWideString(std::string((char *)data, length), (hp->type & CODEC_UTF8) ? CP_UTF8 : (hp->codepage ? hp->codepage : df)))
+    return utf32_to_utf16(std::u32string_view((const char32_t *)data, length / sizeof(char32_t)));
+  else if (auto converted = StringToWideString(std::string_view((const char *)data, length), (hp->type & CODEC_UTF8) ? CP_UTF8 : (hp->codepage ? hp->codepage : df)))
     return converted.value();
   else
     return {};

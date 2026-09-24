@@ -9,7 +9,6 @@ from gui.usefulwidget import (
     D_getIconButton,
     getIconButton,
     yuitsu_switch,
-    D_getcolorbutton,
     D_getsimpleswitch,
     clearlayout,
     D_getdoclink,
@@ -26,6 +25,7 @@ from gui.usefulwidget import (
     getsmalllabel,
     manybuttonlayout,
     makesubtab_lazy,
+    create_centered_rect,
     makescrollgrid,
 )
 from gui.specialwidget import KeyPressDetector
@@ -260,7 +260,9 @@ def _ocrparam_create(self, f):
             "执行周期_(s)",
             getboxlayout(
                 [
-                    D_getspinbox(0.1, 100, globalconfig, "ocr_interval", double=True, default=1.5),
+                    D_getspinbox(
+                        0.1, 100, globalconfig, "ocr_interval", double=True, default=1.5
+                    ),
                     QLabel,
                 ]
             ),
@@ -275,7 +277,11 @@ def _ocrparam_create(self, f):
             getboxlayout(
                 [
                     D_getspinbox(
-                        0, 100, globalconfig, "ocr_trigger_delay", double=True,
+                        0,
+                        100,
+                        globalconfig,
+                        "ocr_trigger_delay",
+                        double=True,
                         default=0,
                     ),
                     QLabel,
@@ -294,6 +300,7 @@ def _ocrparam_create(self, f):
                         ("ocr_stable_sim_v2", "ocr_stable_sim2_v2")[f == "trigger"],
                         double=True,
                         step=0.001,
+                        default=(0.5, 0.95)[f == "trigger"],
                     ),
                     functools.partial(__label1, self),
                 ]
@@ -311,6 +318,7 @@ def _ocrparam_create(self, f):
                         "ocr_diff_sim_v2",
                         double=True,
                         step=0.001,
+                        default=0.95,
                     ),
                     functools.partial(__label2, self),
                 ]
@@ -318,7 +326,9 @@ def _ocrparam_create(self, f):
         )
     self._ocrparaml.addRow(
         "文本相似度阈值",
-        getboxlayout([D_getspinbox(0, 100000, globalconfig, "ocr_text_diff"), QLabel]),
+        getboxlayout(
+            [D_getspinbox(0, 100000, globalconfig, "ocr_text_diff", default=3), QLabel]
+        ),
     )
 
 
@@ -364,7 +374,14 @@ class showocrimage(saveposwindow):
 
     def __init__(self, parent):
         self.originimage = None
-        super().__init__(parent, poslist=globalconfig["showocrgeo"])
+        super().__init__(
+            parent,
+            posinit=gobject.tempconfig.get(
+                "showocrgeo",
+                create_centered_rect(600, 300, gobject.base.settin_ui).getRect(),
+            ),
+            possave=functools.partial(gobject.tempconfig.__setitem__, "showocrgeo"),
+        )
         self.setWindowIcon(qtawesome.icon("fa.picture-o"))
         self.setWindowTitle("查看")
         self.originlabel = pixmapviewer()
@@ -435,7 +452,7 @@ def internal(self):
                 title="离线",
                 type="grid",
                 grid=offgrids,
-                button=D_getdoclink("useapis/ocrapi.html#anchor-offline"),
+                widget=D_getdoclink("useapis/ocrapi.html#anchor-offline"),
             )
         ],
         [
@@ -443,7 +460,7 @@ def internal(self):
                 title="在线",
                 type="grid",
                 grid=initgridsources(self, online),
-                button=D_getdoclink("useapis/ocrapi.html#anchor-online"),
+                widget=D_getdoclink("useapis/ocrapi.html#anchor-online"),
             )
         ],
         [
@@ -495,7 +512,7 @@ def internal(self):
                         "ocr_auto_method_v2",
                         internal=["analysis", "period", "trigger"],
                         callback=functools.partial(_ocrparam_create, self),
-                        default="period"
+                        default="period",
                     ),
                 ]
             ),
@@ -532,6 +549,7 @@ def internal(self):
                 globalconfig,
                 "multiregion",
                 callback=lambda _: gobject.base.textsource.leaveone(),
+                default=False,
             ),
             "",
             "易错内容修正",
@@ -548,38 +566,9 @@ def internal(self):
         ],
     ]
 
-    others = [
-        [
-            "范围框颜色",
-            D_getcolorbutton(
-                self,
-                globalconfig,
-                "ocrrangecolor",
-                callback=lambda _: gobject.base.textsource.setstyle(),
-            ),
-            "",
-            "范围框宽度",
-            D_getspinbox(
-                1,
-                100,
-                globalconfig,
-                "ocrrangewidth",
-                callback=lambda _: gobject.base.textsource.setstyle(),
-                default=2,
-            ),
-            "",
-            "",
-            "",
-        ],
-        [
-            "选取OCR范围后显示范围框",
-            D_getsimpleswitch(globalconfig, "showrangeafterrangeselect", default=True),
-        ],
-    ]
     allothers = [
         [dict(title="识别设置", type="grid", grid=reco)],
-        [dict(title="自动化执行", grid=autorun, button=D_getdoclink("ocrparam.html"))],
-        [dict(title="其他设置", type="grid", grid=others)],
+        [dict(title="自动化执行", grid=autorun, widget=D_getdoclink("ocrparam.html"))],
     ]
 
     return makesubtab_lazy(

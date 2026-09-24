@@ -2,8 +2,10 @@ from qtsymbols import *
 import windows, NativeUtils, gobject
 from myutils.config import globalconfig
 from myutils.hwnd import safepixmap
-from gui.dynalang import LAction
+from gui.dynalang import LAction, LDialog, LFormLayout
+from gui.usefulwidget import getspinbox, ColorButton
 from traceback import print_exc
+from myutils.wrapper import Singleton_activate
 
 
 class SideGrip(QWidget):
@@ -67,7 +69,6 @@ class Mainw(QMainWindow):
         QMainWindow.__init__(self, x)
 
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | self.windowFlags())
-
         self.sideGrips = [
             SideGrip(self, Qt.Edge.LeftEdge),
             SideGrip(self, Qt.Edge.TopEdge),
@@ -133,6 +134,42 @@ class Mainw(QMainWindow):
         self.updateGrips()
 
 
+@Singleton_activate
+class yangshisetting(LDialog):
+    def __init__(self, p):
+        super().__init__(p, Qt.WindowType.WindowCloseButtonHint)
+        self.setWindowTitle("样式")
+        form = LFormLayout(self)
+        spin = getspinbox(
+            0,
+            1,
+            globalconfig,
+            "ocrrangealpha",
+            default=0.1,
+            double=True,
+            callback=gobject.base.textsource.setstyle,
+        )
+        form.addRow("不透明度", spin)
+        spin = getspinbox(
+            1,
+            20,
+            globalconfig,
+            "ocrrangewidth",
+            default=1,
+            callback=gobject.base.textsource.setstyle,
+        )
+        form.addRow("宽度", spin)
+        colorbtn = ColorButton(
+            self,
+            globalconfig,
+            "ocrrangecolor",
+            callback=gobject.base.textsource.setstyle,
+            default="#000000",
+        )
+        form.addRow("颜色", colorbtn)
+        self.show()
+
+
 class rangeadjust(Mainw):
     closesignal = pyqtSignal()
     traceoffsetsignal = pyqtSignal(QPoint)
@@ -151,7 +188,7 @@ class rangeadjust(Mainw):
                         range_ui.__isfocus = False
                         range_ui.setstyle()
 
-        if sum(not (r.range_ui._rect is None) for r in self.ranges) > 1:
+        if sum(r.range_ui._rect.isValid() for r in self.ranges) > 1:
             if f:
                 cleanother()
                 self.__isfocus = True
@@ -193,12 +230,7 @@ class rangeadjust(Mainw):
             self.tracepos = _geo.topLeft()
             self.traceposstart = curr
         target = self.tracepos + (curr - self.traceposstart) * self.devicePixelRatioF()
-        self.setGeometry(
-            target.x(),
-            target.y(),
-            _geo.width(),
-            _geo.height(),
-        )
+        self.setGeometry(QRect(target.x(), target.y(), _geo.width(), _geo.height()))
 
     def rect(self):
         geo = self.geometry()
@@ -211,6 +243,8 @@ class rangeadjust(Mainw):
 
     def __init__(self, parent, ranges):
         super().__init__(parent)
+        self._ready = False
+        self._mousetransp = False
         self.__isfocus = False
         self.ranges: list = ranges
         self.traceoffsetsignal.connect(self.traceoffset)
@@ -221,7 +255,8 @@ class rangeadjust(Mainw):
         self.drag_label = QLabel(self)
         self.drag_label.setGeometry(0, 0, 4000, 2000)
         self._isTracking = False
-        self._rect = None
+        self._rect = QRect()
+        self._styledlg = None
         self.setWindowFlags(
             Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.FramelessWindowHint
@@ -232,37 +267,96 @@ class rangeadjust(Mainw):
         self.customContextMenuRequested.connect(self.showmenu)
         for s in self.cornerGrips:
             s.raise_()
+        windows.WindowFocus.giveup(self.winId())
+        self._ready = True
+        self._updateWindowRgn()
 
     def showmenu(self, _):
         menu = QMenu(self)
+        multiregion = LAction("多重区域模式", menu)
+        multiregion.setCheckable(True)
+        multiregion.setChecked(globalconfig.get("multiregion", False))
+        menu.addAction(multiregion)
+        focus = None
+        if globalconfig.get("multiregion", False):
+            focus = LAction("聚焦", menu)
+            focus.setCheckable(True)
+            focus.setChecked(self.isfocus)
+            menu.addAction(focus)
+        menu.addSeparator()
+        style = LAction("样式", menu)
+        menu.addAction(style)
         close = LAction("关闭", menu)
         mousetransp = LAction("鼠标穿透窗口", menu)
+        mousetransp.setCheckable(True)
+        mousetransp.setChecked(self._mousetransp)
         menu.addAction(mousetransp)
         menu.addAction(close)
         action = menu.exec(QCursor.pos())
-        if action == mousetransp:
-            windows.MouseTrans.set(self.winId())
+        if action == multiregion:
+            checked = multiregion.isChecked()
+            globalconfig["multiregion"] = checked
+            if not checked:
+                gobject.base.textsource.leaveone()
+        elif action == style:
+            yangshisetting(self)
+        elif focus is not None and action == focus:
+            self.isfocus = focus.isChecked()
+            gobject.base.translation_ui.startTranslater()
+        elif action == mousetransp:
+            self.setmousetransp(mousetransp.isChecked())
         elif action == close:
-            self._rect = None
+            self._rect = QRect()
             self.isfocus = False
             self.close()
+
+    def _updateWindowRgn(self):
+        hwnd = int(self.winId())
+        if not hwnd:
+            return
+        # 鼠标穿透或透明度为 0 时，仅保留四条边框可响应鼠标，内部鼠标穿透。
+        if self._mousetransp or globalconfig.get("ocrrangealpha", 0.1) == 0:
+            geo = self.geometry()
+            if geo.width() > 0 and geo.height() > 0:
+                border = round(
+                    max(
+                        globalconfig.get("ocrrangewidth", 1),
+                        self.gripSize,
+                    )
+                    * self.devicePixelRatioF()
+                )
+                windows.WindowRgn.set_frame(
+                    hwnd, geo.width(), geo.height(), border
+                )
+        else:
+            windows.WindowRgn.clear(hwnd)
+
+    def setmousetransp(self, b):
+        self._mousetransp = b
+        if b:
+            # 穿透模式下不显示悬停半透明高亮，避免边框内侧出现额外半透明带
+            self.drag_label.setStyleSheet("background-color:none")
+        if getattr(self, "_ready", False):
+            self._updateWindowRgn()
 
     def setstyle(self):
         self.label.setStyleSheet(
             " border:%spx solid %s; background-color: rgba(0,0,0, %s); border-radius:0;"
             % (
-                globalconfig.get("ocrrangewidth", 2),
-                "red" if self.isfocus else globalconfig["ocrrangecolor"],
+                globalconfig.get("ocrrangewidth", 1),
+                "red" if self.isfocus else globalconfig.get("ocrrangecolor", "#000000"),
                 1 / 255,
             )
         )
+        if getattr(self, "_ready", False):
+            self._updateWindowRgn()
 
     def mouseMoveEvent(self, e: QMouseEvent):
         if self._isTracking:
             self._endPos = e.pos() - self._startPos
             _geo = self.geometry()
             _geo.translate(self._endPos)
-            self.setGeometry(*_geo.getRect())
+            self.setGeometry(_geo)
 
     def mousePressEvent(self, e: QMouseEvent):
         if e.button() == Qt.MouseButton.LeftButton:
@@ -276,48 +370,54 @@ class rangeadjust(Mainw):
             self._endPos = None
 
     def rectoffset(self, rect: QRect):
-        r = self.devicePixelRatioF()
-        r = int(globalconfig.get("ocrrangewidth", 2) * r)
-        _ = [(rect.left() + r, rect.top() + r), (rect.right() - r, rect.bottom() - r)]
-        return _
+        r = round(globalconfig.get("ocrrangewidth", 1) * self.devicePixelRatioF())
+        return rect.adjusted(r, r, -r, -r)
 
-    def setGeometry(self, x, y, w, h):
-        windows.MoveWindow(int(self.winId()), x, y, w, h, True)
+    def setGeometry(self, r: QRect):
+        windows.MoveWindow(
+            int(self.winId()), r.left(), r.top(), r.width(), r.height(), True
+        )
 
     def geometry(self):
         rect = windows.GetWindowRect(int(self.winId()))
         return QRect(rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1])
 
     def moveEvent(self, _):
-        if self._rect:
+        if self._rect.isValid():
             self._rect = self.rectoffset(self.geometry())
 
     def enterEvent(self, _):
-        self.drag_label.setStyleSheet("background-color:rgba(0,0,0, 0.1)")
+        if self._mousetransp:
+            return
+        self.drag_label.setStyleSheet(
+            "background-color:rgba(0,0,0, {})".format(
+                globalconfig.get("ocrrangealpha", 0.1)
+            )
+        )
 
     def leaveEvent(self, _):
+        if self._mousetransp:
+            return
         self.drag_label.setStyleSheet("background-color:none")
 
     def resizeEvent(self, a0):
-
-        self.label.setGeometry(0, 0, self.width(), self.height())
-        if self._rect:
+        self.label.setGeometry(self.rect())
+        if self._rect.isValid():
             self._rect = self.rectoffset(self.geometry())
+        if getattr(self, "_ready", False):
+            self._updateWindowRgn()
         super().resizeEvent(a0)
 
     def getrect(self):
         return self._rect
 
-    def setrect(self, rect, show=True):
+    def setrect(self, rect: QRect, show=True):
         self.tracepos = QPoint()
-        if rect:
-            (x1, y1), (x2, y2) = rect
+        if rect.isValid():
             if show:
                 self.show()
-            r = self.devicePixelRatioF()
-            r = int(globalconfig.get("ocrrangewidth", 2) * r)
-            r = int(globalconfig.get("ocrrangewidth", 2) * r)
-            self.setGeometry(x1 - r, y1 - r, x2 - x1 + 2 * r, y2 - y1 + 2 * r)
+            r = round(globalconfig.get("ocrrangewidth", 1) * self.devicePixelRatioF())
+            self.setGeometry(rect.adjusted(-r, -r, r, r))
         self._rect = rect
         # 由于使用movewindow而非qt函数，导致内部执行绪有问题。
 
@@ -336,9 +436,9 @@ def rangeselct_function(callback, parent: QWidget = None, hideshow=False):
             gobject.base.textsource.pause_recognition()
             for _ in gobject.base.textsource.ranges:
                 _save[_] = _.range_ui.getrect()
-                _.range_ui.setrect(((-9999, -9999), (-9999, -9999)), show=False)
+                _.range_ui.setrect(QRect(-9999, -9999, 1, 1), show=False)
         except:
-            pass
+            print_exc()
 
     def reset():
         if not hideshow:
@@ -351,10 +451,10 @@ def rangeselct_function(callback, parent: QWidget = None, hideshow=False):
                 _.range_ui.setrect(_save[_], show=False)
             gobject.base.textsource.resume_recognition()
         except:
-            pass
+            print_exc()
 
     p = p.winid if p.isVisible() else None
-    color = QColor(globalconfig["ocrrangecolor"])
+    color = QColor(globalconfig.get("ocrrangecolor", "#000000"))
 
     called = []
 
@@ -363,7 +463,8 @@ def rangeselct_function(callback, parent: QWidget = None, hideshow=False):
         y1, y2 = min(y1, y2), max(y1, y2)
         pix = safepixmap(ptr[:size]).copy(x1, y1, x2 - x1, y2 - y1).toImage()
         reset()
-        callback(((x1 + xoff, y1 + yoff), (x2 + xoff, y2 + yoff)), pix)
+        rect = QRect(x1 + xoff, y1 + yoff, x2 - x1, y2 - y1)
+        callback(rect, pix)
         called.append(0)
 
     cb = NativeUtils.CreateSelectRangeWindow_CB(__cb)
@@ -373,9 +474,9 @@ def rangeselct_function(callback, parent: QWidget = None, hideshow=False):
         color.red(),
         color.green(),
         color.blue(),
-        globalconfig.get("ocrrangewidth", 2),
+        globalconfig.get("ocrrangewidth", 1),
         cb,
     )
     if not called:
         reset()
-        callback(((0, 0), (0, 0)), None)
+        callback(QRect(), None)

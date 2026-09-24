@@ -10,6 +10,8 @@ namespace Msg
     void EmuConnected(const T *text, ...);
     template <typename T>
     void EmuWarning(const T *text, ...);
+    template <typename T>
+    void EngineType(const T *text, ...);
     void EmuGameInfo(const char *id, const char *title, const char *version = "");
 }
 
@@ -20,6 +22,7 @@ bool NewHook(HookParam hp, LPCSTR name);
 
 void RemoveHook(uint64_t addr, int maxOffset = 9);
 std::string LoadResData(LPCWSTR pszResID, LPCWSTR _type);
+std::wstring LoadResCharSet(LPCWSTR pszResID);
 inline SearchParam spDefault;
 inline JITTYPE jittypedefault = JITTYPE::PC;
 // EOF
@@ -37,6 +40,7 @@ extern std::mutex maplock;
 
 extern std::vector<HookParam> JIT_HP_Records;
 extern std::mutex JIT_HP_Records_lock;
+extern AutoHandle<> hookPipe;
 void jitaddraddr(uint32_t em_addr, uintptr_t jitaddr, JITTYPE);
 void jitaddrclear();
 
