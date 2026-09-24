@@ -393,6 +393,23 @@ class OverlayMappingTests(unittest.TestCase):
         # One dense paragraph box, not four sparse bands.
         self.assertGreater(bodies[0].height, 50)
 
+    def test_side_by_side_buttons_are_not_one_line(self):
+        boxes = [
+            ovl.TextBox(
+                100, 200, 180, 40, "Thử lại xác thực",
+                role="body", layout_id=1, font_size=16, ink_height=16,
+                background_color="rgba(37, 99, 235, 255)",
+            ),
+            ovl.TextBox(
+                300, 200, 190, 40, "Vào Bảng điều khiển",
+                role="body", layout_id=1, font_size=16, ink_height=16,
+                background_color="rgba(55, 55, 58, 255)",
+            ),
+        ]
+        merged = ovl.coalesce_paint_boxes(boxes)
+        texts = [box.text for box in merged if box.text.strip()]
+        self.assertEqual(["Thử lại xác thực", "Vào Bảng điều khiển"], texts)
+
     def test_coalesce_recovers_card_title_from_short_first_body(self):
         """HOOK / OCR style: short first line + long body → title + body."""
         boxes = [

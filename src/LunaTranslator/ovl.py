@@ -2488,7 +2488,12 @@ def _peel_merged_title_from_body(box: TextBox) -> Optional[tuple[TextBox, TextBo
 
 
 def _boxes_share_visual_line(a: TextBox, b: TextBox) -> bool:
-    """True only when two OCR crumbs sit on the same horizontal text line."""
+    """True only when two OCR crumbs are the same line of text, split mid-word.
+
+    A gap the size of a word space still joins. The gutter between two buttons
+    does not: joining them paints both labels into the left button and covers
+    the right one with the left button's colour.
+    """
 
     y_overlap = min(a.y + a.height, b.y + b.height) - max(a.y, b.y)
     if y_overlap < 0.55 * min(a.height, b.height):
@@ -2496,8 +2501,24 @@ def _boxes_share_visual_line(a: TextBox, b: TextBox) -> bool:
     # Prefer horizontal neighbours (same line continuation), not stacked rows.
     if b.y >= a.y + a.height * 0.65:
         return False
+    if a.background_color and b.background_color:
+        if (
+            color_distance(parse_color(a.background_color), parse_color(b.background_color))
+            > 48
+        ):
+            return False
     x_gap = max(0.0, b.x - (a.x + a.width), a.x - (b.x + b.width))
-    return x_gap <= max(24.0, min(a.height, b.height) * 1.2)
+    glyph = min(
+        a.ink_height or a.font_size or a.height,
+        b.ink_height or b.font_size or b.height,
+    )
+    # Box height includes button padding, so a limit in box heights swallows
+    # the gutter. A word space is a fraction of the glyph, not of the control.
+    if a.ink_height or a.font_size or b.ink_height or b.font_size:
+        limit = max(8.0, glyph * 0.55)
+    else:
+        limit = max(8.0, min(a.height, b.height) * 0.28)
+    return x_gap <= limit
 
 
 def _boxes_same_message_stack(a: TextBox, b: TextBox) -> bool:
@@ -3076,99 +3097,6 @@ def _clamp_same_row(boxes: Sequence[TextBox]) -> list[TextBox]:
     return result
 
 
-def _trim_icon_column(box: TextBox, image, origin_x: float = 0.0, origin_y: float = 0.0) -> TextBox:
-    """If a single-line box starts with a small separated ink blob, that blob
-    is an icon the OCR rectangle swallowed. Leave it uncovered.
-    """
-
-    if (
-        image is None
-        or image.isNull()
-        or len(box.source_lines or []) != 1
-        or box.width < 36
-        or box.height < 10
-    ):
-        return box
-    x0 = int(round(box.x - origin_x))
-    y0 = int(round(box.y - origin_y))
-    w = int(round(box.width))
-    h = int(round(box.height))
-    if x0 < 0 or y0 < 0 or x0 + w > image.width() or y0 + h > image.height():
-        return box
-    background = QColor(image.pixel(x0, y0))
-    columns = []
-    for x in range(x0, x0 + w):
-        if any(
-            color_distance(QColor(image.pixel(x, y)), background) > 36
-            for y in range(y0, y0 + h, 2)
-        ):
-            columns.append(x)
-    if len(columns) < 4:
-        return box
-    segments = []
-    for x in columns:
-        if not segments or x - segments[-1][1] > max(4, int(h * 0.22)):
-            segments.append([x, x])
-        else:
-            segments[-1][1] = x
-    if len(segments) < 2:
-        return box
-    blob = segments[0][1] - segments[0][0] + 1
-    gap = segments[1][0] - segments[0][1]
-    if blob > h * 1.35 or gap < max(4, int(h * 0.18)):
-        return box
-    # A couple of pixels past the gap, so a sliver of the misread glyph
-    # does not stay painted between the icon and the label.
-    cut = segments[1][0] - x0 + max(3, int(h * 0.12))
-    if cut >= w - 12:
-        return box
-    lines = []
-    for line in box.source_lines or []:
-        line = dict(line)
-        line["x"] = float(line.get("x", box.x)) + cut
-        line["width"] = max(8.0, float(line.get("width", box.width)) - cut)
-        lines.append(line)
-    return replace(box, x=box.x + cut, width=box.width - cut, source_lines=lines)
-
-
-_LEADING_ICON = re.compile(r"^(\S)\s+\S")
-
-
-def _trim_leading_icon(box: TextBox) -> TextBox:
-    """Drop a one-character OCR misread of an icon and leave the icon visible.
-
-    Snipping Tool reads a magnifying glass as ``Q`` and a download glyph as
-    ``L``, then the overlay paints over the icon. A bullet or a prompt the
-    translation still starts with is left alone.
-    """
-
-    source = " ".join(
-        str(line.get("text", "")).strip()
-        for line in (box.source_lines or [])
-        if str(line.get("text", "")).strip()
-    )
-    match = _LEADING_ICON.match(source)
-    if not match:
-        return box
-    token = match.group(1)
-    if not (token.isalnum() or token in "@#"):
-        return box
-    if (box.text or "").lstrip().startswith(token):
-        return box
-    pad = max(12.0, float(box.ink_height or box.height or 16) * 1.7)
-    if box.width <= pad + 16:
-        return box
-    lines = []
-    for line in box.source_lines or []:
-        line = dict(line)
-        line["x"] = float(line.get("x", box.x)) + pad
-        line["width"] = max(8.0, float(line.get("width", box.width)) - pad)
-        lines.append(line)
-    return replace(
-        box, x=box.x + pad, width=box.width - pad, source_lines=lines
-    )
-
-
 def _widen_list_rows(
     boxes: Sequence[TextBox], screen_right: float
 ) -> list[TextBox]:
@@ -3627,15 +3555,7 @@ class Overlay(QWidget):
 
     def _render_boxes(self, boxes: Sequence[TextBox], dpr: float, screenshot=None):
         self.auto_bg_rects: "list[tuple]" = []
-        source_boxes = [
-            _trim_icon_column(
-                _trim_leading_icon(box),
-                screenshot,
-                self.screen_origin_physical_x,
-                self.screen_origin_physical_y,
-            )
-            for box in boxes
-        ]
+        source_boxes = list(boxes)
         planning_boxes = list(source_boxes)
         known_markers = {box.marker_id for box in source_boxes if box.marker_id > 0}
         with _PENDING_LOCK:
@@ -3687,8 +3607,10 @@ class Overlay(QWidget):
             ) / dpr
             line_w = float(value.get("width", fallback.width)) / dpr
             line_h = float(value.get("height", fallback.height)) / dpr
-            pad_x = max(1.0, line_h * 0.08)
-            pad_y = max(1.0, line_h * 0.10)
+            # One pixel hides the antialiased edge of a glyph. More than that
+            # and the cover is a rectangle larger than the text it replaces.
+            pad_x = 1.0
+            pad_y = 1.0
             return QRect(
                 round(line_x - pad_x),
                 round(line_y - pad_y),
@@ -3849,18 +3771,6 @@ class Overlay(QWidget):
                         float(source_line.get("height", source_box.height)),
                         "",
                     )
-                    if has_screenshot:
-                        # A badge or button is wider than the label the OCR
-                        # reported; cover the whole surface or its border is
-                        # left drawn around the translation.
-                        pad = surface_pad(screenshot, line_sample)
-                        if pad:
-                            source_rect = source_rect.adjusted(
-                                -round(pad[0] / dpr),
-                                -round(pad[1] / dpr),
-                                round(pad[2] / dpr),
-                                round(pad[3] / dpr),
-                            )
                     if scaled.background_color:
                         brush = QBrush(parse_color(scaled.background_color))
                     elif has_screenshot:
@@ -3883,9 +3793,10 @@ class Overlay(QWidget):
                 # Cover-only: masks already applied; no text label.
                 continue
 
-            skip_bg = False
-            if auto_bg and background_brush_created and scaled.background_color:
-                pass
+            # The mask already covers the source box. A second rounded rect
+            # on the label is sized from the widened translation and reads as
+            # a background larger than the original text.
+            skip_bg = bool(auto_bg and background_brush_created)
             label = self._create_label(
                 scaled,
                 skip_background=skip_bg,
@@ -4632,18 +4543,13 @@ class Overlay(QWidget):
         # Cover the source ink and the text actually painted — not the whole
         # box. A row widened into free space would otherwise drag its
         # background across the scrollbar and the panel beside it.
-        painted_w = max((text_width(metrics, line) for line in lines), default=0)
-        bg_w = max(
-            1,
-            round(
-                max(
-                    float(getattr(box, "_source_width", box.width) or 0),
-                    min(float(box.width), painted_w + hpad),
-                )
-            ),
-        )
+        source_w = float(getattr(box, "_source_width", 0) or 0) or float(box.width)
+        source_h = float(getattr(box, "_source_height", 0) or 0) or float(box.height)
         label._background_rect = QRect(
-            paint_margin, paint_margin, bg_w, max(1, round(cover_h))
+            paint_margin,
+            paint_margin,
+            max(1, round(source_w)),
+            max(1, round(source_h)),
         )
 
         left = int(hpad / 2) + paint_margin
