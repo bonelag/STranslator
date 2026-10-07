@@ -1,4 +1,5 @@
 from qtsymbols import *
+from gui.fluent.messagebox import ExMessageBox
 import time, functools, threading, os, shutil, uuid
 from traceback import print_exc
 import windows, qtawesome, gobject, NativeUtils
@@ -15,9 +16,8 @@ from myutils.config import (
     translatorsetting,
 )
 from textio.textsource.texthook import texthook
-from gui.setting.about import get_about_info
+from textio.textsource.ocrtext import ocrtext
 from myutils.magpie_builtin import MagpieBuiltin, AdapterService
-from gui.gamemanager.dialog import dialog_setting_game
 from myutils.ocrutil import ocr_run, imageCut
 from myutils.mecab import WordSegResult
 from myutils.utils import (
@@ -41,10 +41,14 @@ from gui.usefulwidget import (
     qwidget_screen,
 )
 from gui.edittext import edittrans
-from gui.gamemanager.dialog import dialog_savedgame_integrated
+from gui.gamemanager.dialog import (
+    dialog_savedgame_integrated,
+    opengamesettings,
+)
 from gui.gamemanager.common import startgame
 from gui.dynalang import LAction
 from gui.buttonbar import buttonfunctions, IconLabelX, ButtonBar
+from gui.ocrtranslationoverlay import OCRToolbarMode, ocr_popup_is_visible
 
 
 class TranslatorWindow(resizableframeless):
@@ -72,6 +76,7 @@ class TranslatorWindow(resizableframeless):
     changeshowhidetranssig = pyqtSignal()
     magpiecallback = pyqtSignal(bool)
     showMarkDownSig = pyqtSignal(str)
+    ocroverlaymodesignal = pyqtSignal(bool)
 
     def setbuttonsizeX(self):
         self.changeextendstated()
@@ -229,6 +234,8 @@ class TranslatorWindow(resizableframeless):
         return "\n".join(newlines)
 
     def autodisappear(self):
+        if self.ocr_overlay_collapsed:
+            return
         if not globalconfig.get("autodisappear", False):
             return
         self.lastrefreshtime = time.time()
@@ -322,6 +329,8 @@ class TranslatorWindow(resizableframeless):
 
     def autohidedelaythread(self):
         def __():
+            if self.ocr_overlay_collapsed:
+                return
             if self.isMouseHover:
                 self.lastrefreshtime = time.time()
                 return
@@ -609,9 +618,7 @@ class TranslatorWindow(resizableframeless):
             ),
             (
                 "open_game_setting",
-                lambda: dialog_setting_game(
-                    gobject.base.commonstylebase, gobject.base.gameuid, 1
-                ),
+                lambda: opengamesettings(gobject.base.gameuid, 1),
             ),
             ("ocr_once", self.ocr_once_signal.emit),
             (
@@ -697,6 +704,9 @@ class TranslatorWindow(resizableframeless):
         return int(self.winId())
 
     def changeextendstated(self):
+        if self.ocr_overlay_collapsed:
+            self.ocr_toolbar_mode.refresh()
+            return
         dh = self.dynamicextraheight()
         if globalconfig.get("verticalhorizontal", False):
             self.translate_text.move(0, 0)
@@ -748,6 +758,9 @@ class TranslatorWindow(resizableframeless):
         )
 
     def settop(self):
+        # Raising the owner also raises its OCR selections over an open menu.
+        if ocr_popup_is_visible():
+            return
         windows.SetWindowPos(
             self.winid,
             windows.HWND_TOPMOST,
@@ -798,7 +811,19 @@ class TranslatorWindow(resizableframeless):
             )
         self.changeextendstated()
 
+    @property
+    def ocr_overlay_collapsed(self):
+        return self.ocr_toolbar_mode is not None and self.ocr_toolbar_mode.active
+
+    def set_ocr_overlay_mode(self, enabled):
+        if self.ocr_toolbar_mode is not None:
+            self.ocr_toolbar_mode.set_active(
+                enabled
+                and not globalconfig.get("ocr_translation_overlay_show_main", False)
+            )
+
     def initvalues(self):
+        self.ocr_toolbar_mode = None
         self.enter_sig = 0
         self.lastrefreshtime = time.time()
         self.fullscreenmanager_busy = threading.Lock()
@@ -816,6 +841,7 @@ class TranslatorWindow(resizableframeless):
         QToolTip.showText(QCursor.pos(), string, self)
 
     def initsignals(self):
+        self.ocroverlaymodesignal.connect(self.set_ocr_overlay_mode)
         self.hotkeyuse_selectprocsignal.connect(gobject.base.createattachprocess)
         self.displayglobaltooltip.connect(self.displayglobaltooltip_f)
         self.ocr_once_signal.connect(self.ocr_once_function)
@@ -939,7 +965,9 @@ class TranslatorWindow(resizableframeless):
         t.start()
         self.adjustbuttons = self.titlebar.adjustbuttons
         self.verticalhorizontal(globalconfig.get("verticalhorizontal", False))
-        self.screengeochanged.connect(self.checksettop)
+        self.ocr_toolbar_mode = OCRToolbarMode(
+            self, lambda vertical: int(IconLabelX.w() if vertical else IconLabelX.h())
+        )
 
     def showmenu(self, _):
         child = self.titlebar.childAt(_)
@@ -1101,13 +1129,6 @@ class TranslatorWindow(resizableframeless):
             color=SpecialColor.RawTextColor,
         )
 
-    def showabout(self):
-
-        _t = get_about_info()
-        if not globalconfig.get("adaptive_height", True):
-            _t = _t.replace("\n\n", "\n")
-        self.showMarkDown(_t)
-
     def showEvent(self, e):
         super().showEvent(e)
         if not self.firstshow:
@@ -1121,12 +1142,6 @@ class TranslatorWindow(resizableframeless):
         self.enterfunction(2 + globalconfig["disappear_delay_tool"])
         self.autohidedelaythread()
         self.tracewindowposthread()
-        if time.time() - globalconfig.get("lasttime3", 0) > 3600 * 24 * 7:
-            self.showabout()
-            globalconfig["lasttime3"] = time.time()
-        elif time.time() - globalconfig.get("lasttime2", 0) > 3600 * 24 * 1:
-            self.showabout()
-        globalconfig["lasttime2"] = time.time()
 
     def setselectableEx(self):
         globalconfig["selectableEx"] = True
@@ -1367,6 +1382,12 @@ class TranslatorWindow(resizableframeless):
         self.translate_text.resendcontentsize()
 
     def dynamicextraheight(self):
+        if self.ocr_overlay_collapsed:
+            return int(
+                IconLabelX.w()
+                if globalconfig.get("verticalhorizontal", False)
+                else IconLabelX.h()
+            )
 
         if self.radiu_valid:
             if globalconfig.get("verticalhorizontal", False):
@@ -1458,6 +1479,8 @@ class TranslatorWindow(resizableframeless):
         )
 
     def textAreaChanged(self, size: QSize):
+        if self.ocr_overlay_collapsed:
+            return
         # size只有一个维度是准确的，应当根据显示方向来使用其中有效的部分
         if self.translate_text.cleared:
             return
@@ -1526,10 +1549,15 @@ class TranslatorWindow(resizableframeless):
 
     @tryprint
     def afterrange(self, clear, rect, img=None):
+        if not rect.isValid():
+            return
+        source = gobject.base.textsource
+        if not isinstance(source, ocrtext) or source.ending:
+            return
         if clear or not globalconfig.get("multiregion", False):
-            gobject.base.textsource.clearrange()
-        gobject.base.textsource.newrangeadjustor()
-        gobject.base.textsource.setrect(rect)
+            source.clearrange()
+        region = source.newrangeadjustor()
+        source.setrect(rect)
         if (self.showhidestateFirst) or (
             self.showhidestate and not self.showhidestateFirst
         ):
@@ -1537,17 +1565,22 @@ class TranslatorWindow(resizableframeless):
             self.showhidestate = True
             self.refreshtoolicon()
         try:
-            gobject.base.textsource.showhiderangeui(self.showhidestate)
+            source.showhiderangeui(self.showhidestate)
         except:
             pass
 
         def __():
-            # 选取范围后立即直接一次，期间不要让自动之前去瞎跑以免浪费一次。
-            t = gobject.base.textsource.gettextonce()
-            if t:
+            # Capture the selected manager: adding another region must not refresh old ones.
+            if gobject.base.textsource is not source or source.ending:
+                return
+            target = (
+                region if globalconfig.get("ocr_translation_overlay", False) else None
+            )
+            t = source.gettextonce(target)
+            if t and gobject.base.textsource is source and not source.ending:
                 gobject.base.textgetmethod(t, False)
 
-            gobject.base.textsource.stop = False
+            source.stop = False
 
         threader(__)()
         if not globalconfig.get("keepontop", True):
@@ -1565,6 +1598,9 @@ class TranslatorWindow(resizableframeless):
         gobject.base.textgetmethod(t, is_auto_run=False, isFromHook=isFromHook)
 
     def toolbarhidedelay(self):
+        if self.ocr_overlay_collapsed:
+            self.ocr_toolbar_mode.refresh()
+            return
 
         self.titlebar.hide()
         self.set_color_transparency()
@@ -1624,6 +1660,9 @@ class TranslatorWindow(resizableframeless):
         self.toolbarhidedelaysignal.emit()
 
     def enterfunction(self, delay=None):
+        if self.ocr_overlay_collapsed:
+            self.ocr_toolbar_mode.refresh()
+            return
         if (not globalconfig.get("hidetools", False)) and (
             (not globalconfig.get("locktoolsEx", False)) or self.checklocktoolsEx()
         ):
@@ -1636,6 +1675,9 @@ class TranslatorWindow(resizableframeless):
 
     def resizeEvent(self, e: QResizeEvent):
         super().resizeEvent(e)
+        if self.ocr_overlay_collapsed:
+            self.ocr_toolbar_mode.refresh()
+            return
         wh = self.dynamicextraheight()
 
         if globalconfig.get("verticalhorizontal", False):
@@ -1691,7 +1733,7 @@ class TranslatorWindow(resizableframeless):
                 errors = saveallconfig()
                 if errors:
                     errors = [f + "\n\t" + stringfyerror(e) for e, f in errors]
-                    QMessageBox.critical(
+                    ExMessageBox.critical(
                         gobject.base.commonstylebase,
                         _TR("错误"),
                         "\n\n".join(errors),

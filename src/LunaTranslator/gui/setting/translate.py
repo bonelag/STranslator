@@ -1,4 +1,5 @@
 from qtsymbols import *
+from gui.fluent.messagebox import ExMessageBox
 import functools, os, re, shutil, zipfile
 import gobject, math, NativeUtils, hashlib, uuid
 from myutils.config import (
@@ -25,7 +26,7 @@ from myutils.utils import (
 )
 from myutils.proxy import getproxy
 from myutils.utils import subprochiderun
-import json, sqlite3, NativeUtils
+import json, sqlite3
 from traceback import print_exc
 from collections import Counter
 from language import Languages
@@ -33,14 +34,12 @@ from myutils.wrapper import tryprint, threader
 from gui.inputdialog import autoinitdialog, autoinitdialog_items
 from gui.usefulwidget import (
     SuperCombo,
-    D_getspinbox,
     AutoScaleImageButton,
     getboxlayout,
     VisLFormLayout,
     getIconButton,
     ColorButton,
     check_grid_append,
-    CollapsibleBoxWithButton,
     getsimpleswitch,
     D_getIconButton,
     MyInputDialog,
@@ -57,10 +56,11 @@ from gui.usefulwidget import (
     IconButton,
     PopupWidget,
     getsimplecombobox,
+    GroupCardWidget,
+    FocusSpin,
 )
 from gui.setting.display_text import GetFormForLineHeight
 from gui.dynalang import (
-    LGroupBox,
     LPushButton,
     LAction,
     LFormLayout,
@@ -463,8 +463,16 @@ tscolor_setting_collector: "list[IconButtonWithOverlay]" = []
 
 
 def show_tscolor_setting_guide():
+    # 页签懒加载重建后，旧收集项的 C++ 对象可能已被删除——
+    # 挨个尝试并清掉死引用（自愈，不再对已删除控件抛 RuntimeError）
+    dead = []
     for _ in tscolor_setting_collector:
-        _.guide.show_at(_)
+        try:
+            _.guide.show_at(_)
+        except RuntimeError:
+            dead.append(_)
+    for _ in dead:
+        tscolor_setting_collector.remove(_)
 
 
 class IconButtonWithOverlay(ColorButton):
@@ -544,6 +552,7 @@ def selectllmcallback(self, countnum: list, fanyi, newname=None):
         globalconfig["fanyi"][uid],
         "color",
         callback=gobject.base.translation_ui.translate_text.setcolorstyle,
+        width=44,
     )
 
     offset = 5 * (len(countnum) % 3)
@@ -658,6 +667,7 @@ def initsome11(self, l, save=False):
                 globalconfig["fanyi"][fanyi],
                 "color",
                 callback=gobject.base.translation_ui.translate_text.setcolorstyle,
+                width=44,
             ),
             last,
         ]
@@ -821,7 +831,7 @@ def _c_slice_spin(
     context_length.setRange(range0, range1)
     context_length.setPageStep(step)
     context_length.setValue(f1(globalconfig["llama.cpp"].get(keyvalue, default)))
-    context_length_input = QSpinBox()
+    context_length_input = FocusSpin()
     context_length_input.setRange(range20, range21)
     context_length_input.setSingleStep(step2)
     context_length_input.setValue(globalconfig["llama.cpp"].get(keyvalue, default))
@@ -994,56 +1004,19 @@ class interruptexc(Exception):
     pass
 
 
-def downloadgguf(key, url: str):
+def _download_file(key, url, savep, *, digest=None, check_interrupt=None,
+                   octet_stream_only=False, verify_size=True):
+    """llama.cpp 下载流（downloadgguf / downloadone 共用）：分块写入 +
+    中断 + 进度 + 可选 SHA256 校验。异常统一转进度码（-3 取消 / -1
+    失败），返回是否成功。"""
     try:
         gobject.base.llamacppdownloadprogress.emit(key, url, 0, 0)
-        savep = gobject.gettempdir("llamacpp-models/" + str(uuid.uuid4()))
         with open(savep, "wb") as file:
             r = requests.get(url, stream=True, proxies=getproxy())
-            if r.headers.get("Content-Type") not in (None, "application/octet-stream"):
+            if octet_stream_only and r.headers.get("Content-Type") not in (
+                None, "application/octet-stream"
+            ):
                 raise Exception()
-            size = int(r.headers["Content-Length"])
-            file_size = 0
-            for i in r.iter_content(chunk_size=1024 * 32):
-                if interrupt.get(key, False):
-                    raise interruptexc()
-                if not i:
-                    continue
-                file.write(i)
-                file_size += len(i)
-                gobject.base.llamacppdownloadprogress.emit(key, url, file_size, size)
-        if file_size != size:
-            raise Exception()
-        gobject.base.llamacppdownloadprogress.emit(key, url, -2, 0)
-
-        shutil.move(savep, gobject.getcachedir("llamacpp-models/" + key))
-        globalconfig["llama.cpp"]["models"] = gobject.getcachedir("llamacpp-models")
-        globalconfig["llama.cpp"]["model"] = key
-        global GGUF_REFRESH_BTN
-        if GGUF_REFRESH_BTN:
-            gobject.base.safeinvokefunction.emit(GGUF_REFRESH_BTN.click)
-        return True
-    except interruptexc:
-        gobject.base.llamacppdownloadprogress.emit(key, url, -3, 0)
-        return False
-    except:
-        print_exc()
-        gobject.base.llamacppdownloadprogress.emit(key, url, -1, 0)
-        return False
-
-
-def downloadone(key, url: str, digest: str, check_interrupt, tag: str):
-    try:
-        digmethod, digest = digest.upper().split(":")
-        if digmethod != "SHA256":
-            raise Exception()
-    except:
-        digest = None
-    try:
-        gobject.base.llamacppdownloadprogress.emit(key, url, 0, 0)
-        savep = gobject.gettempdir("llamacpp/" + str(uuid.uuid4()) + ".zip")
-        with open(savep, "wb") as file:
-            r = requests.get(url, stream=True, proxies=getproxy())
             size = int(r.headers["Content-Length"])
             file_size = 0
             hash_obj = hashlib.sha256()
@@ -1061,13 +1034,47 @@ def downloadone(key, url: str, digest: str, check_interrupt, tag: str):
                     hash_obj.update(i)
             if digest and (hash_obj.hexdigest().upper() != digest):
                 raise Exception()
+            if verify_size and (file_size != size):
+                raise Exception()
+        return True
+    except interruptexc:
+        gobject.base.llamacppdownloadprogress.emit(key, url, -3, 0)
+    except:
+        print_exc()
+        gobject.base.llamacppdownloadprogress.emit(key, url, -1, 0)
+    return False
+
+
+def downloadgguf(key, url: str):
+    savep = gobject.gettempdir("llamacpp-models/" + str(uuid.uuid4()))
+    if not _download_file(key, url, savep, octet_stream_only=True):
+        return False
+    gobject.base.llamacppdownloadprogress.emit(key, url, -2, 0)
+
+    shutil.move(savep, gobject.getcachedir("llamacpp-models/" + key))
+    globalconfig["llama.cpp"]["models"] = gobject.getcachedir("llamacpp-models")
+    globalconfig["llama.cpp"]["model"] = key
+    if GGUF_REFRESH_BTN:
+        gobject.base.safeinvokefunction.emit(GGUF_REFRESH_BTN.click)
+    return True
+
+
+def downloadone(key, url: str, digest: str, check_interrupt, tag: str):
+    try:
+        digmethod, digest = digest.upper().split(":")
+        if digmethod != "SHA256":
+            raise Exception()
+    except:
+        digest = None
+    savep = gobject.gettempdir("llamacpp/" + str(uuid.uuid4()) + ".zip")
+    if not _download_file(key, url, savep, digest=digest,
+                          check_interrupt=check_interrupt, verify_size=False):
+        return False
+    try:
         with zipfile.ZipFile(savep) as zipf:
             zipf.extractall(gobject.gettempdir("llamacpp/" + tag))
         gobject.base.llamacppdownloadprogress.emit(key, url, -2, 0)
         return True
-    except interruptexc:
-        gobject.base.llamacppdownloadprogress.emit(key, url, -3, 0)
-        return False
     except:
         gobject.base.llamacppdownloadprogress.emit(key, url, -1, 0)
         return False
@@ -1128,7 +1135,6 @@ def merge_copy_llamacpps(llamaserver, tag):
     globalconfig["llama.cpp"]["llama-server.exe.dir"] = tgt
     globalconfig["llama.cpp"]["llama-server.exe"] = "llama-server.exe"
 
-    global LLAMA_CPP_REFRESH_BTN
     if LLAMA_CPP_REFRESH_BTN:
         gobject.base.safeinvokefunction.emit(LLAMA_CPP_REFRESH_BTN.click)
 
@@ -1204,7 +1210,6 @@ def getllamaservercmd(llamaserver, gguf, version):
     cmd = '"{llamaserver}" -m "{gguf}" --host {host} --port {port} {ctx} {parallel} --gpu-layers {ngl} {load_mode} --metrics {device}'.format(
         load_mode=load_mode,
         ngl=ngl,
-        fa=fa,
         ctx=ctx,
         parallel=parallel,
         llamaserver=llamaserver,
@@ -1257,7 +1262,7 @@ def autostartllamacpp(force=False):
             gobject.base.llamacppstatus.emit(0)
             loghandle.close()
 
-    __scopeexits = _scopeexits()
+    __scopeexits = _scopeexits()  # 保留引用：__del__ 时关日志/复位状态
     gobject.base.llamacppstatus.emit(1)
     gobject.base.llamacppstdout.emit(cmd)
     print(cmd, file=loghandle, flush=True)
@@ -1514,12 +1519,9 @@ class llamalisttable(LTableView):
             elif arch.startswith("cuda"):
                 arch += " (Nvidia)"
                 enable = "10DE" in xpus
-            elif arch == "hip-radeon":
-                arch += " (AMD)"
-                enable = "1022" in xpus
             elif arch.startswith("rocm"):
                 arch += " (AMD)"
-                enable = "1022" in xpus
+                enable = "1022" in xpus or "1002" in xpus
             elif arch == "vulkan":
                 arch += "_(通用)"
             item = LStandardItem(arch)
@@ -1878,8 +1880,6 @@ def llamacppgrid():
     gobject.base.connectsignal(gobject.base.llamacppstdoutstatus, label.test)
 
     def __status(status: int):
-        global BTNPlayEnable1, BTNPlayEnable2
-
         if status == -3:
             pass
         elif status < 0:
@@ -1927,8 +1927,9 @@ def llamacppgrid():
     )
     form.addRow(_loglable)
     form.setRowVisible(1, False)
-    group = LGroupBox("下载")
-    downloadtasks = QFormLayout(group)
+    group = GroupCardWidget("下载")
+    downloadtasks = QFormLayout(group.contentWidget())
+    group.setContentLayout(downloadtasks)
     form.addRow(group)
     form.setRowVisible(2, False)
     logopenbtn.clicked.connect(lambda c: form.setRowVisible(1, c))
@@ -2088,13 +2089,10 @@ def __showllamacpp(ref: "list[CollapsibleBoxWithButton]", checked):
         ref[0].internalLayout.setSpacing(0)
         ref[0].internalLayout.addWidget(w)
         l = QHBoxLayout(w)
-        margin = l.contentsMargins()
-        margin.setTop(0)
-        l.setContentsMargins(margin)
-        box = QGroupBox()
-        box.setTitle("llama.cpp Launcher")
+        box = GroupCardWidget("llama.cpp Launcher")
         l.addWidget(box)
-        grid = QGridLayout(box)
+        grid = QGridLayout(box.contentWidget())
+        box.setContentLayout(grid)
         do, grids = llamacppgrid()
         automakegrid(grid, grids)
         do()
@@ -2217,7 +2215,7 @@ def sqlite2json2(self, sqlitefile, targetjson=None, existsmerge=False):
                     collect.extend(list(mtjs.keys()))
     except:
         print_exc()
-        QMessageBox.critical(self, _TR("错误"), _TR("所选文件格式错误！"))
+        ExMessageBox.critical(self, _TR("错误"), _TR("所选文件格式错误！"))
         return
     _collect = []
     for _, __ in Counter(collect).most_common():

@@ -193,10 +193,10 @@ def downloadNtlea():
 
 
 def downloadCurl(target):
-    if target == "winxp":
+    if 0 and target == "winxp":
         downloadcopylibcurl("xp", "files/DLL32")
         return
-    downloadcopylibcurl("32", "files/DLL32")
+    downloadcopylibcurl("xp", "files/DLL32")
     downloadcopylibcurl("64", "files/DLL64")
 
 
@@ -231,7 +231,9 @@ def get_cmake_args(arch, target):
     elif target == "winxp":
         config = "-DWINXP=ON -DWIN10ABOVE=OFF"
     if 0:
-        vsver = "Visual Studio 17 2022" if target == "winxp" else "Visual Studio 18 2026"
+        vsver = (
+            "Visual Studio 17 2022" if target == "winxp" else "Visual Studio 18 2026"
+        )
         Tool = "v141_xp" if target == "winxp" else f"host={arch}"
     else:
         vsver = "Visual Studio 18 2026"
@@ -330,7 +332,7 @@ def downloadalls(target):
     downloadCurl(target)
     downloadLocaleEmulator()
     downloadlr()
-    if target == "winxp":
+    if 0 and target == "winxp":
         return
     downloadmapie()
     downloadOCRModel()
@@ -426,7 +428,10 @@ if __name__ == "__main__":
         os.chdir(rootDir)
         subprocess.run(f"{py37Path} -m pip install --upgrade pip")
         if 1:  # target == "win7":
-            subprocess.run(f"{py37Path} -m pip install tinycss2 PyQt5")
+            if target == "winxp":
+                subprocess.run(f"{py37Path} -m pip install tinycss2 PyQt5-winxp")
+            else:
+                subprocess.run(f"{py37Path} -m pip install tinycss2 PyQt5")
         else:
             subprocess.run(f"{py37Path} -m pip install tinycss2 pyqt6")
 
@@ -456,9 +461,7 @@ if __name__ == "__main__":
         shutil.copy(f"NativeImpl/builds/_x64_{target}/LunaSubprocess64.exe", "files")
         os.system(f"robocopy NativeImpl/builds/_x64_{target} files/DLL64 *.dll")
 
-        os.system(
-            f"python {os.path.join(rootthisfiledir,'getllamacppinfo.py')}"
-        )
+        os.system(f"python {os.path.join(rootthisfiledir,'getllamacppinfo.py')}")
         os.system(
             f"python {os.path.join(rootthisfiledir,'collectall.py')} {arch} {target}"
         )
@@ -467,7 +470,7 @@ if __name__ == "__main__":
         for _ in (
             "LunaTranslator_x64",
             "LunaTranslator_x64_win7",
-            "LunaTranslator_x86_win7",
+            # "LunaTranslator_x86_win7",
             "LunaTranslator_x86_winxp",
         ):
             for __ in myfiles:

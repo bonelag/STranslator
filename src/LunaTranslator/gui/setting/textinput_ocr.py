@@ -21,12 +21,13 @@ from gui.usefulwidget import (
     pixmapviewer,
     LStandardItemModel,
     SuperCombo,
-    NQGroupBox,
+    GroupCardWidget,
     getsmalllabel,
     manybuttonlayout,
     makesubtab_lazy,
     create_centered_rect,
     makescrollgrid,
+    maketabholder,
 )
 from gui.specialwidget import KeyPressDetector
 from traceback import print_exc
@@ -333,8 +334,9 @@ def _ocrparam_create(self, f):
 
 
 def _ocrparam(self):
-    self._ocrparam = NQGroupBox()
-    self._ocrparaml = LFormLayout(self._ocrparam)
+    self._ocrparam = GroupCardWidget()
+    self._ocrparaml = LFormLayout(self._ocrparam.contentWidget())
+    self._ocrparam.setContentLayout(self._ocrparaml)
     _ocrparam_create(self, globalconfig.get("ocr_auto_method_v2", "period"))
     return self._ocrparam
 
@@ -519,6 +521,68 @@ def internal(self):
         ],
         [functools.partial(_ocrparam, self)],
     ]
+    overlay = [
+        [
+            "译文覆盖OCR区域",
+            D_getsimpleswitch(
+                globalconfig,
+                "ocr_translation_overlay",
+                default=False,
+                callback=lambda _: getattr(
+                    gobject.base.textsource, "setstyle", lambda: None
+                )(),
+            ),
+            "",
+            "显示主翻译框",
+            D_getsimpleswitch(
+                globalconfig,
+                "ocr_translation_overlay_show_main",
+                default=False,
+                name="ocrshowmainswitch",
+                parent=self,
+                callback=lambda _: getattr(
+                    gobject.base.textsource, "setstyle", lambda: None
+                )(),
+            ),
+            "",
+            "背景自动取色",
+            D_getsimpleswitch(
+                globalconfig,
+                "ocr_translation_overlay_adaptive_background",
+                default=True,
+                callback=lambda _: getattr(
+                    gobject.base.textsource, "setstyle", lambda: None
+                )(),
+            ),
+        ],
+        [
+            "覆盖译文字号",
+            D_getspinbox(
+                6,
+                100,
+                globalconfig,
+                "ocr_translation_overlay_fontsize",
+                default=22,
+                callback=lambda _: getattr(
+                    gobject.base.textsource, "setstyle", lambda: None
+                )(),
+            ),
+            "",
+            "覆盖背景不透明度",
+            D_getspinbox(
+                0.1,
+                1,
+                globalconfig,
+                "ocr_translation_overlay_opacity",
+                double=True,
+                step=0.05,
+                default=0.95,
+                callback=lambda _: getattr(
+                    gobject.base.textsource, "setstyle", lambda: None
+                )(),
+            ),
+        ],
+    ]
     reco = [
         [
             "识别方向",
@@ -568,18 +632,19 @@ def internal(self):
 
     allothers = [
         [dict(title="识别设置", type="grid", grid=reco)],
+        [dict(title="译文覆盖", type="grid", grid=overlay)],
         [dict(title="自动化执行", grid=autorun, widget=D_getdoclink("ocrparam.html"))],
     ]
 
-    return makesubtab_lazy(
+    tab, dotab = makesubtab_lazy(
         ["OCR引擎", "其他设置"],
         [
             lambda l: makescrollgrid(engines, l),
             lambda l: makescrollgrid(allothers, l),
         ],
         delay=True,
-        padding=True,
     )
+    return tab, dotab
 
 
 def getocrgrid_table(self, basel: QVBoxLayout):
@@ -587,5 +652,5 @@ def getocrgrid_table(self, basel: QVBoxLayout):
     self.ocrswitchs = {}
 
     gridlayoutwidget, do = internal(self)
-    basel.addWidget(gridlayoutwidget)
+    basel.addWidget(maketabholder(gridlayoutwidget))
     do()

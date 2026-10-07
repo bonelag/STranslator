@@ -46,11 +46,17 @@ from myutils.hwnd import getExeIcon, getcurrexe
 from textio.textsource.copyboard import copyboard
 from textio.textsource.texthook import texthook
 from textio.textsource.ocrtext import ocrtext
+from gui.ocrtranslationoverlay import (
+    route_overlay_translation,
+    overlay_source_is_current,
+    OCRRegionTask,
+)
 from textio.textsource.filetrans import filetrans
 from textio.textsource.mssr import mssr
 from gui.selecthook import hookselect
 from gui.translatorUI import TranslatorWindow
 import functools, gobject
+import gui.fluent
 from gui.transhist import transhist
 from gui.edittext import edittext
 from gui.flowsearchword import WordViewTooltip
@@ -279,7 +285,6 @@ class BASEOBJECT(QObject):
         self.willshutdown = False
         self.history = HistoryHelper()
         self.currentisdark = None
-        self.currentmica = None
         self.update_avalable = False
         self.translators: "dict[str, basetrans]" = {}
         self.cishus: "dict[str, cishubase]" = {}
@@ -416,6 +421,12 @@ class BASEOBJECT(QObject):
             self.hwnd = None
             self.gameuid = 0
         self.textsource_p = _
+        ui = getattr(self, "translation_ui", None)
+        if ui is not None:
+            ui.ocroverlaymodesignal.emit(
+                isinstance(_, ocrtext)
+                and globalconfig.get("ocr_translation_overlay", False)
+            )
 
     @threader
     def safeloadprocessmodels(self):
@@ -509,6 +520,7 @@ class BASEOBJECT(QObject):
 
     def displayinfomessage(self, text, infotype):
         if infotype == "<notrans>":
+            route_overlay_translation(text, "ocr", text)
             self.translation_ui.displayres.emit(
                 dict(
                     color=SpecialColor.RawTextColor,
@@ -568,21 +580,27 @@ class BASEOBJECT(QObject):
         skippreprocess=False,
     ):
         with self.solvegottextlock:
-            succ = self.textgetmethod_1(
-                text,
-                is_auto_run=is_auto_run,
-                waitforresultcallback=waitforresultcallback,
-                waitforresultcallbackengine=waitforresultcallbackengine,
-                waitforresultcallbackengine_force=waitforresultcallbackengine_force,
-                erroroutput=erroroutput,
-                updateTranslate=updateTranslate,
-                isFromHook=isFromHook,
-                statusok=statusok,
-                isRefresh=isRefresh,
-                skippreprocess=skippreprocess,
-            )
-            if waitforresultcallback and not succ:
-                waitforresultcallback(TranslateResult())
+            sources = getattr(text, "ocr_region_sources", None)
+            requests = sources if sources and waitforresultcallback is None else (text,)
+            for region_text in requests:
+                if getattr(region_text, "ocr_direct_translation", False):
+                    self.displayinfomessage(region_text, "<notrans>")
+                    continue
+                succ = self.textgetmethod_1(
+                    region_text,
+                    is_auto_run=is_auto_run,
+                    waitforresultcallback=waitforresultcallback,
+                    waitforresultcallbackengine=waitforresultcallbackengine,
+                    waitforresultcallbackengine_force=waitforresultcallbackengine_force,
+                    erroroutput=erroroutput,
+                    updateTranslate=updateTranslate,
+                    isFromHook=isFromHook,
+                    statusok=statusok,
+                    isRefresh=isRefresh,
+                    skippreprocess=skippreprocess,
+                )
+                if waitforresultcallback and not succ:
+                    waitforresultcallback(TranslateResult())
 
     def __erroroutput(self, klass, erroroutput, _showrawfunction, e, t):
 
@@ -611,7 +629,13 @@ class BASEOBJECT(QObject):
             return
         if not text.strip():
             return
-        if is_auto_run and text == self.currenttext_raw and statusok == self.statusok:
+        if (
+            is_auto_run
+            and text == self.currenttext_raw
+            and statusok == self.statusok
+            and getattr(text, "ocr_overlay_context", None)
+            == getattr(self.currenttext_raw, "ocr_overlay_context", None)
+        ):
             return
         origin = text
         __erroroutput = functools.partial(self.__erroroutput, None, erroroutput, None)
@@ -632,7 +656,13 @@ class BASEOBJECT(QObject):
             __erroroutput(stringfyerror(e), TextType.Error_origin)
             return
 
-        if is_auto_run and text == self.currenttext and statusok == self.statusok:
+        if (
+            is_auto_run
+            and text == self.currenttext
+            and statusok == self.statusok
+            and getattr(origin, "ocr_overlay_context", None)
+            == getattr(self.currenttext_raw, "ocr_overlay_context", None)
+        ):
             return
         self.currentsignature = currentsignature
         if is_auto_run and (
@@ -757,6 +787,14 @@ class BASEOBJECT(QObject):
         if not (updateTranslate or globalconfig.get("refresh_on_get_trans", False)):
             _showrawfunction()
             _showrawfunction = None
+        ocr_overlay_source = None
+        if (
+            globalconfig.get("ocr_translation_overlay", False)
+            and not waitforresultcallback
+        ):
+            candidate = self.currenttext_raw if isRefresh else origin
+            if overlay_source_is_current(candidate):
+                ocr_overlay_source = candidate
         read_trans_once_check = []
         for engine in real_fix_rank:
             if engine in globalconfig["fanyi"]:
@@ -777,6 +815,7 @@ class BASEOBJECT(QObject):
                 read_trans_once_check=read_trans_once_check,
                 erroroutput=erroroutput,
                 statusok=statusok,
+                ocr_overlay_source=ocr_overlay_source,
             )
         return True
 
@@ -819,6 +858,7 @@ class BASEOBJECT(QObject):
         read_trans_once_check: list,
         erroroutput,
         statusok=True,
+        ocr_overlay_source=None,
     ):
         callback = partial(
             self.GetTranslationCallback,
@@ -833,11 +873,20 @@ class BASEOBJECT(QObject):
             erroroutput,
             statusok=statusok,
             is_auto_run=is_auto_run,
+            ocr_overlay_source=ocr_overlay_source,
         )
+        # The legacy queue's third slot also protects synchronous API requests.
+        # OCRRegionTask uses that slot only when no external callback exists;
+        # the worker distinguishes it by ocr_overlay_task, never calls it, and
+        # cancels it by this region's provenance rather than the shared queue.
         task = (
             callback,
             text_solved,
-            waitforresultcallback,
+            (
+                OCRRegionTask(ocr_overlay_source)
+                if waitforresultcallback is None and ocr_overlay_source is not None
+                else waitforresultcallback
+            ),
             is_auto_run,
             optimization_params,
         )
@@ -878,13 +927,30 @@ class BASEOBJECT(QObject):
         iserror=False,
         statusok=True,
         is_auto_run=True,
+        ocr_overlay_source=None,
     ):
         with self.gettranslatelock:
             usefultranslators.discard(classname)
+            if ocr_overlay_source is not None and not overlay_source_is_current(
+                ocr_overlay_source
+            ):
+                return
             if (
                 waitforresultcallback is None
                 and currentsignature != self.currentsignature
             ):
+                # Other OCR regions remain current when the main window advances.
+                if ocr_overlay_source is None or iserror:
+                    return
+                res = self.solveaftertrans(res, optimization_params)
+                if res:
+                    route_overlay_translation(ocr_overlay_source, classname, res)
+                    if iter_res_status in (0, 2) and statusok:
+                        self.history.appendtrans(currentsignature, classname, res)
+                        try:
+                            self.textsource.sqlqueueput((contentraw, classname, res))
+                        except:
+                            pass
                 return
 
             safe_callback = functools.partial(
@@ -895,7 +961,12 @@ class BASEOBJECT(QObject):
             )
             if iserror:
                 if erroroutput or (currentsignature == self.currentsignature):
-                    __erroroutput(res, TextType.Error_translator)
+                    try:
+                        err_type = TextType.Error_translator
+                    except NameError:
+                        from gui.rendertext.texttype import TextType
+                        err_type = TextType.Error_translator
+                    __erroroutput(res, err_type)
                 if len(usefultranslators) == 0:
                     safe_callback()
                 return
@@ -906,12 +977,21 @@ class BASEOBJECT(QObject):
                     safe_callback()
                 return
             self._delayshowraw(_showrawfunction)
+            if ocr_overlay_source is not None and not waitforresultcallback:
+                route_overlay_translation(ocr_overlay_source, classname, res)
+            elif (
+                currentsignature == self.currentsignature
+                and not waitforresultcallback
+                and self.history.viewptr == -1
+            ):
+                route_overlay_translation(self.currenttext_raw, classname, res)
             if (
                 (currentsignature == self.currentsignature)
                 and (iter_res_status in (0, 1))
                 and (not waitforresultcallback)
                 and (self.history.viewptr == -1)
             ):
+                import re
                 parts = re.split(r"(?=\[\d+ \d+\|\d+ \d+\]|(?=\[#\d+\]))", res)
                 res_ui = '\n'.join(p.strip() for p in parts if p.strip())
                 res_ui = re.sub(r"\[-?\d+ -?\d+\|-?\d+ -?\d+\]\s*", "", res_ui)
@@ -927,16 +1007,18 @@ class BASEOBJECT(QObject):
                 )
                 self.translation_ui.displayres.emit(displayreskwargs)
                 try:
-                    formatted = re.sub(r"(\[\d+ \d+\|\d+ \d+\])", r"\n\1", res).strip()
-                    self.safeinvokefunction.emit(
-                        partial(
-                            ovl.show_overlay,
-                            formatted,
-                            stream_id=f"{currentsignature}:{classname}",
+                    if hasattr(self, "safeinvokefunction"):
+                        import ovl
+                        formatted = re.sub(r"(\[\d+ \d+\|\d+ \d+\])", r"\n\1", res).strip()
+                        self.safeinvokefunction.emit(
+                            functools.partial(
+                                ovl.show_overlay,
+                                formatted,
+                                stream_id=f"{currentsignature}:{classname}",
+                            )
                         )
-                    )
                 except Exception:
-                    print_exc()
+                    pass
             if iter_res_status in (0, 2):  # 0为普通，1为iter，2为iter终止
 
                 if statusok:
@@ -1347,16 +1429,10 @@ class BASEOBJECT(QObject):
         if ((not ismenulist)) and self.__dontshowintaborsetbackdrop(widget):
             return
         if ismenulist:
-            name = ui_settings.get("theme3", "PyQtDarkTheme")
-            NativeUtils.SetCornerNotRound(int(widget.winId()), False, name == "QTWin11")
-            if name == "QTWin11":
-                NativeUtils.setAcrylicEffect(
-                    int(widget.winId()), True, [0x40F7F7FA, 0x40212121][dark]
-                )
-            else:
-                NativeUtils.clearEffect(int(widget.winId()))
+            pass
         else:
-            NativeUtils.SetTheme(int(widget.winId()), dark, self.currentmica)
+            # 原"窗口特效"设置（其他界面）已删除，固定 MicaAlt（TABBEDWINDOW）
+            NativeUtils.SetTheme(int(widget.winId()), dark, 3)
 
     def checkkeypresssatisfy(self, key, df=False):
         if not globalconfig["wordclickkbtriggerneed"].get(key, df):
@@ -1575,6 +1651,8 @@ class BASEOBJECT(QObject):
         self.tray.messageClicked.connect(self.__trayclicked)
         self.trayclicked = print
         self.tray.show()
+        if gobject.sys_le_xp:
+            return
         version = NativeUtils.QueryVersion(getcurrexe())
         if "load_doc_or_log" not in globalconfig:
             os.startfile(dynamiclink(docs=True))
@@ -1615,82 +1693,19 @@ class BASEOBJECT(QObject):
         for widget in QApplication.topLevelWidgets():
             self.giveupfocus_checked(widget)
 
-    def ismenulistframeless(self, widget: QWidget):
-        ismenulist = isinstance(widget, (QMenu, PopupWidget)) or (
-            type(widget) == QFrame
-        )
-        return ismenulist or self.__dontshowintaborsetbackdrop(widget)
-
-    def cornerornot(self, w=None):
-        __ = [w] if w else QApplication.topLevelWidgets()
-        for widget in __:
-            if self.ismenulistframeless(widget):
-                continue
-            NativeUtils.SetCornerNotRound(
-                int(widget.winId()), ui_settings.get("force_rect", True), False
-            )
-
     def setcommonstylesheet(self):
-
+        # 只负责明暗切换：qtawesome 图标翻转 + 广播 DarkLightChangedEvent
+        # + FluentUI3 明暗重扫。UI 字体在 loadui 设置、语言切换时由
+        # changeUIlanguage 重设，与此无关。
         dark = nowisdark()
         qtawesome.isdark = dark
-        __curr = (dark, ui_settings.get("WindowBackdrop", 3))
-        if (self.currentisdark, self.currentmica) != __curr:
-            self.currentisdark, self.currentmica = __curr
+        if self.currentisdark != dark:
+            self.currentisdark = dark
             for widget in QApplication.allWidgets():
                 QApplication.postEvent(widget, DarkLightChangedEvent(dark))
             for widget in QApplication.topLevelWidgets():
                 self.setdarkandbackdrop(widget, dark)
-        darklight = ["light", "dark"][dark]
-
-        style = ""
-        for _ in (0,):
-            try:
-                name = ui_settings.get("theme3", "PyQtDarkTheme")
-                _fn = None
-                for n in static_data["themes"]:
-                    if n["name"] == name:
-                        _fn = n["file"][darklight]
-                        break
-
-                if not _fn:
-                    break
-
-                if _fn.endswith(".py"):
-                    style = importlib.import_module(
-                        "files.LunaTranslator_qss." + _fn[:-3].replace("/", ".")
-                    ).stylesheet()
-                elif _fn.endswith(".qss"):
-                    with open(
-                        "files/LunaTranslator_qss/{}".format(_fn),
-                        "r",
-                    ) as ff:
-                        style = ff.read()
-            except:
-                print_exc()
-        fontstr = lambda fsize: "font:{fontsize}pt  {fonttype};".format(
-            fontsize=fsize,
-            fonttype=ui_settings.get(
-                "settingfonttype", gobject.tempconfig.get("settingfonttype", "")
-            ),
-        )
-        style += "*{{  {}  }}".format(fontstr(ui_settings.get("settingfontsize", 12)))
-        style += "QListWidget {{ {} }}".format(
-            fontstr(ui_settings.get("settingfontsize", 12) + 2)
-        )
-        style += "QGroupBox{ background:transparent; } QGroupBox#notitle{ margin-top:0px;} QGroupBox#notitle:title {margin-top: 0px;}"
-        style += "#NOBORDER{border:0;margin:0;padding:0;}"
-        if self.commonstylebase.styleSheet() != style:
-            self.commonstylebase.setStyleSheet(style)
-        font = QFont()
-        font.setFamily(
-            ui_settings.get(
-                "settingfonttype", gobject.tempconfig.get("settingfonttype", "")
-            )
-        )
-        font.setPointSizeF(ui_settings.get("settingfontsize", 12))
-        if QApplication.instance().font() != font:
-            QApplication.instance().setFont(font)
+        gui.fluent.apply_fluent_style(dark)
 
     def get_font_default(self, lang: Languages, issetting: bool) -> str:
 
@@ -1716,12 +1731,10 @@ class BASEOBJECT(QObject):
         return font_default
 
     def parsedefaultfont(self):
-        for k in ["fonttype", "fonttype2", "settingfonttype"]:
+        for k in ["fonttype", "fonttype2"]:
             if not ui_settings.get(k, ""):
                 l = Languages.Japanese if k == "fonttype" else getlanguse()
-                gobject.tempconfig[k] = self.get_font_default(
-                    l, True if k == "settingfonttype" else False
-                )
+                gobject.tempconfig[k] = self.get_font_default(l, False)
 
     def loadui(self, startwithgameuid):
         QApplication.instance().installEventFilter(self)
@@ -1776,6 +1789,11 @@ class BASEOBJECT(QObject):
         self.serviceinit()
         versioncheckthread()
         autostartllamacpp()
+
+        font = QFont()
+        font.setFamily(self.get_font_default(getlanguse(), True))
+        font.setPixelSize(13)
+        QApplication.instance().setFont(font)
 
     @property
     def focusWindow(self):
@@ -1846,16 +1864,18 @@ class BASEOBJECT(QObject):
             self.RichMessageBox.emit((_TR(title if title else "错误"), _TR(msg)))
 
     def _dowhenwndcreate(self, obj):
+        # 同 Gallery：FluentUI3 插件全权接管窗口外观，不做任何 DWM
+        # 窗口处理（旧的 SetWindowExtendFrame/SetTheme/SetCornerNotRound
+        # 是旧 QSS 主题的遗留，会给菜单/窗口制造系统边框与灰底）。
+        # 只保留功能性处理：Magpie 标记、任务栏显示、焦点让渡。
         if not isinstance(obj, QWidget):
             return
         hwnd = obj.winId()
         if not hwnd:  # window create/destroy,when destroy winId is None
             return
         windows.SetProp(int(obj.winId()), "Magpie.ToolWindow", windows.HANDLE(1))
-        self.cornerornot(obj)
         self.setshowintab_checked(obj)
         self.giveupfocus_checked(obj)
-        NativeUtils.SetWindowExtendFrame(int(hwnd))
         if self.currentisdark is not None:
             self.setdarkandbackdrop(obj, self.currentisdark)
 

@@ -994,5 +994,15 @@
     "Phông chữ": "",
     "Lề ngang": "",
     "Lề dọc": "",
-    "Thời gian tồn tại": ""
+    "Thời gian tồn tại": "",
+    "界面语言": "Interface language",
+    "应用主题": "Apply theme",
+    "折叠/展开侧边栏": "Collapse/expand sidebar",
+    "收起设置": "Hide settings",
+    "上一张": "Previous",
+    "下一张": "Next",
+    "展开/收起导航": "Expand/collapse navigation",
+    "隐藏目标": "Hidden target",
+    "隐藏延迟": "Hidden latency",
+    "编辑颜色": "Edit Color"
 }
