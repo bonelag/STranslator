@@ -47,9 +47,14 @@ class TS(basetrans):
     def langmap(self):
         return {Languages.Chinese: "zh-CN", Languages.TradChinese: "zh-TW"}
 
-    def translate_1(self, content):
+    def translate(self, content: str):
         if not content:
             return ""
+        
+        lines = content.splitlines()
+        if not any(lines):
+            return content
+
         response = self.proxysession.post(
             "https://translate-pa.googleapis.com/v1/translateHtml",
             headers={
@@ -62,12 +67,10 @@ class TS(basetrans):
                 "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 "
                 "Safari/537.36",
             },
-            data=json.dumps([[[content], self.srclang, self.tgtlang], "wt_lib"]),
+            data=json.dumps([[lines, self.srclang, self.tgtlang], "wt_lib"]),
         )
         try:
-            return unescape(response.json()[0][0])
+            res_list = response.json()[0]
+            return "\n".join((unescape(str(_)) if _ is not None else "" for _ in res_list))
         except:
             raise Exception(response)
-
-    def translate(self, content: str):
-        return "\n".join((self.translate_1(_) for _ in content.splitlines()))

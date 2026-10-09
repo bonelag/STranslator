@@ -1,4 +1,4 @@
-
+.codegraph
 *.pyc
 *.pyc
 *.pyc 
@@ -35,6 +35,7 @@ src/files/DLL64
 src/files/LunaHook
 src/files/Magpie
 src/files/Locale
+src/files/runtime*
 src/run37.bat
 src/run3732.bat
 settings.json

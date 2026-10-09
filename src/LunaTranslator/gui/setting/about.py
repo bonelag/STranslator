@@ -525,6 +525,62 @@ def setTab_about(self: QWidget, basel):
     updateexp.setHeaderWidget(updateheader)
     updateexp.addContentWidget(getboxwidget(["最新版本", 1, version_link]))
 
+    # OCR Debug 折叠卡
+    lang = getlanguse()
+    if lang == Languages.Vietnamese:
+        title_debug = "Chế độ debug OCR"
+        lbl_para = "  └─ Hiện viền đoạn"
+        lbl_fill_para = "      └─ Đổ màu nền đoạn"
+        lbl_fill_text_para = "      └─ Đổ màu chữ đoạn"
+        lbl_line = "  └─ Hiện viền dòng"
+        lbl_fill_line = "      └─ Đổ màu nền dòng"
+        lbl_fill_text_line = "      └─ Đổ màu chữ dòng"
+        lbl_show_title = "      └─ Vẽ tiêu đề"
+        lbl_word = "  └─ Hiện viền chữ"
+        lbl_fill_word = "      └─ Đổ màu nền chữ"
+        lbl_fill_text_word = "      └─ Đổ màu chữ của chữ"
+        lbl_detect_font = "  └─ Hiện phông chữ"
+    else:
+        title_debug = "OCR Debug Mode"
+        lbl_para = "  └─ Show Paragraph Border"
+        lbl_fill_para = "      └─ Fill Paragraph Background"
+        lbl_fill_text_para = "      └─ Fill Paragraph Text"
+        lbl_line = "  └─ Show Line Border"
+        lbl_fill_line = "      └─ Fill Line Background"
+        lbl_fill_text_line = "      └─ Fill Line Text"
+        lbl_show_title = "      └─ Draw Title Border"
+        lbl_word = "  └─ Show Word Border"
+        lbl_fill_word = "      └─ Fill Word Background"
+        lbl_fill_text_word = "      └─ Fill Word Text"
+        lbl_detect_font = "  └─ Show Font Name"
+
+    ocr_debug_expander = ExExpander()
+    ocr_debug_switch = D_getsimpleswitch(
+        globalconfig, "debugocr", default=False
+    )()
+    ocr_debug_header = make_card_contents(
+        "", title_debug, "", ocr_debug_switch, ocr_debug_expander
+    )
+    ocr_debug_header.layout().setContentsMargins(0, 12, 0, 12)
+    ocr_debug_expander.setHeaderWidget(ocr_debug_header)
+
+    debug_grid = [
+        [(makecardrow(lbl_para, D_getsimpleswitch(globalconfig, "debugocr_show_para", default=True)), 0)],
+        [(makecardrow(lbl_fill_para, D_getsimpleswitch(globalconfig, "debugocr_fill_para", default=False)), 0)],
+        [(makecardrow(lbl_fill_text_para, D_getsimpleswitch(globalconfig, "debugocr_fill_text_para", default=False)), 0)],
+        [(makecardrow(lbl_line, D_getsimpleswitch(globalconfig, "debugocr_show_line", default=True)), 0)],
+        [(makecardrow(lbl_fill_line, D_getsimpleswitch(globalconfig, "debugocr_fill_line", default=False)), 0)],
+        [(makecardrow(lbl_fill_text_line, D_getsimpleswitch(globalconfig, "debugocr_fill_text_line", default=False)), 0)],
+        [(makecardrow(lbl_show_title, D_getsimpleswitch(globalconfig, "debugocr_show_title", default=True)), 0)],
+        [(makecardrow(lbl_word, D_getsimpleswitch(globalconfig, "debugocr_show_word", default=True)), 0)],
+        [(makecardrow(lbl_fill_word, D_getsimpleswitch(globalconfig, "debugocr_fill_word", default=False)), 0)],
+        [(makecardrow(lbl_fill_text_word, D_getsimpleswitch(globalconfig, "debugocr_fill_text_word", default=False)), 0)],
+        [(makecardrow(lbl_detect_font, D_getsimpleswitch(globalconfig, "debugocr_detect_font", default=False)), 0)],
+    ]
+    ocr_debug_content = makegrid(debug_grid)
+    ocr_debug_expander.addContentWidget(ocr_debug_content)
+    ocr_debug_expander.setExpanded(False)
+
     # LICENSE 折叠（ExExpander，同 Gallery 强调色折叠面板的用法）
 
     license_expander = ExExpander()
@@ -593,6 +649,7 @@ def setTab_about(self: QWidget, basel):
         [(updateexp, 0)],
         # 下载进度条：显示时出现在卡片下方（隐藏时布局不占位）
         [(self.downloadprogress, 0)],
+        [(ocr_debug_expander, 0)],
         [(license_expander, 0)],
         [(aboutwidget(), 0)],
     ]

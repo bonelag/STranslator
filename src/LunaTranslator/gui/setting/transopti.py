@@ -1,6 +1,6 @@
 from qtsymbols import *
 import functools, gobject
-from myutils.post import POSTSOLVE
+from myutils.post import POSTSOLVE, processfunctions
 from myutils.utils import (
     selectdebugfile,
     checkpostlangmatch,
@@ -74,6 +74,15 @@ class _PreProcessTree(FluentSettingTree):
         self.rebuild()
 
     def rebuild(self):
+        for k in postprocessconfig:
+            if k not in globalconfig["postprocess_rank"]:
+                globalconfig["postprocess_rank"].append(k)
+        _bads = []
+        for _ in globalconfig["postprocess_rank"]:
+            if _ not in processfunctions:
+                _bads.append(_)
+        for _ in _bads:
+            globalconfig["postprocess_rank"].remove(_)
         self.clear()
         for post in globalconfig["postprocess_rank"]:
             if post not in postprocessconfig:

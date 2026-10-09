@@ -37,6 +37,22 @@ def selectdir():
     return path
 
 
+def clean_unused_files(d):
+    if not os.path.isdir(d):
+        return
+    for item in os.listdir(d):
+        item_path = os.path.join(d, item)
+        if item in flist:
+            continue
+        try:
+            if os.path.isdir(item_path):
+                shutil.rmtree(item_path)
+            else:
+                os.remove(item_path)
+        except Exception:
+            pass
+
+
 class question(QWidget):
     def downloadofficial(self):
         headers = {
@@ -119,6 +135,7 @@ class question(QWidget):
             ff.extractall(gobject.getcachedir(), collect)
         if not checkdir(cachedir):
             raise Exception()
+        clean_unused_files(cachedir)
 
     installsucc = pyqtSignal(bool, str)
 
@@ -170,6 +187,7 @@ class question(QWidget):
             zipf.extractall(gobject.getcachedir())
         if not checkdir(cachedir):
             raise Exception()
+        clean_unused_files(cachedir)
 
     def _installsucc(self, succ, failreason):
         self.formLayout.setRowVisible(0, succ)

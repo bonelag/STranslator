@@ -6,10 +6,14 @@ option(PYSTAND_CONSOLE "Build PyStand as a console application." OFF)
 
 include(FetchContent)
 
-file(DOWNLOAD
-    https://image.lunatranslator.org/luna.ico
-    ${CMAKE_BINARY_DIR}/luna.ico
-)
+if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/luna.ico")
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/luna.ico" "${CMAKE_BINARY_DIR}/luna.ico" COPYONLY)
+else()
+    file(DOWNLOAD
+        https://image.lunatranslator.org/luna.ico
+        ${CMAKE_BINARY_DIR}/luna.ico
+    )
+endif()
 
 file(WRITE ${CMAKE_BINARY_DIR}/luna.rc "IDI_ICON1 ICON DISCARDABLE \"luna.ico\"")
 

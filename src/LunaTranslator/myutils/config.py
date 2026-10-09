@@ -80,6 +80,7 @@ ocrerrorfix = tryreadconfig("ocrerrorfix.json")
 globalconfig: "dict[str, dict[str, str|dict|list] | list[str|dict] | str]" = (
     tryreadconfig("config.json")
 )
+globalconfig["debugocr"] = False
 magpie_config = tryreadconfig_1("Magpie/config.json", pathold="magpie_config.json")
 postprocessconfig = tryreadconfig("postprocessconfig.json")
 
@@ -455,6 +456,7 @@ migrate_ui_settings()
 language_last = None
 
 languageshow = {}
+englishshow = None
 
 
 def getlanguse() -> Languages:
@@ -478,6 +480,17 @@ def loadlanguage():
         languageshow = {}
 
 
+def loadenglish():
+    global englishshow
+    if englishshow is not None:
+        return
+    try:
+        with open(langfile("en"), "r", encoding="utf8") as ff:
+            englishshow = json.load(ff)
+    except:
+        englishshow = {}
+
+
 def __parsenottr(match: re.Match):
     return "{}{}{}".format(_TR(match.group(1)), match.group(2), _TR(match.group(3)))
 
@@ -499,15 +512,24 @@ def ___TR(k: str) -> str:
         return "(" + ___TR(k[1:-1]) + ")"
     if k.startswith("<a") and k.endswith("</a>"):
         return re.sub("(<a.*?>)(.*?)(</a>)", __partagA, k)
+    loadlanguage()
+    __ = languageshow.get(k)
+    if __:
+        return __
+    # Only zh/en/vi are fully supported now.
+    # For all other UI languages, fallback to English dictionary.
+    current_lang = globalconfig.get("languageuse2", "")
+    if current_lang not in ("zh", "en", "vi"):
+        loadenglish()
+        if englishshow:
+            _en = englishshow.get(k)
+            if _en:
+                return _en
     if "_" in k:
         fnd = k.find("_")
         return ___TR(k[:fnd]) + " " + ___TR(k[fnd + 1 :])
     if k.isascii():
         return k
-    loadlanguage()
-    __ = languageshow.get(k)
-    if __:
-        return __
     languageshow[k] = ""
     return k
 
@@ -547,7 +569,12 @@ def saveallconfig(test=False):
         return
     _is_config_saving = True
     errorcollect = []
-    safesave(errorcollect, gobject.getconfig("config.json"), globalconfig)
+    debug_state = globalconfig.get("debugocr", False)
+    globalconfig["debugocr"] = False
+    try:
+        safesave(errorcollect, gobject.getconfig("config.json"), globalconfig)
+    finally:
+        globalconfig["debugocr"] = debug_state
     safesave(errorcollect, gobject.getconfig("ui_settings.json"), ui_settings)
     safesave(
         errorcollect, gobject.getconfig("postprocessconfig.json"), postprocessconfig

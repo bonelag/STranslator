@@ -30,8 +30,8 @@ def dedup_by_cache(line: str, args: dict) -> str:
 def _2_f(line, args):
     if len(line) == 0:
         return
-    keepnodump = args["保持非重复字符"]
-    times = args["重复次数(若为1则自动分析去重)"]
+    keepnodump = args.get("保持非重复字符", False)
+    times = args.get("重复次数(若为1则自动分析去重)", 1)
 
     if times >= 2:
         guesstimes = times
