@@ -2929,9 +2929,8 @@ def parse_boxes(text: str, stream_id=None) -> List[TextBox]:
 
         indexed_boxes = parse_indexed_boxes(text, PENDING_BOXES, stream_id=stream_id)
         if indexed_boxes:
-            merged = coalesce_paint_boxes(indexed_boxes)
-            _harmonize_role_palette(merged)
-            return merged
+            _harmonize_role_palette(indexed_boxes)
+            return indexed_boxes
 
         # Without coordinates or stable markers there is no safe way to know
         # whether this translation belongs to the current OCR frame. Reusing
@@ -2955,6 +2954,7 @@ class StrokedLabel(QLabel):
         **kwargs,
     ):
         super().__init__(*args, **kwargs)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self._skip_background = skip_background
         self._custom_background_color = background_color
         self._custom_text_color = text_color
