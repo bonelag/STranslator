@@ -84,6 +84,14 @@ from collections import OrderedDict
 from itertools import islice
 
 
+def strip_overlay_markers(text: str) -> str:
+    if not text:
+        return ""
+    t = re.sub(r"\[#\d+\]\s*", "", text)
+    t = re.sub(r"\[-?\d+ -?\d+\|-?\d+ -?\d+\]\s*", "", t)
+    return t.strip()
+
+
 class HistoryHelper:
     # 仅记录主界面中显示的内容，不要显示具有回调的内容。
     class singlehistory:
@@ -611,7 +619,11 @@ class BASEOBJECT(QObject):
             return
         if not text.strip():
             return
-        if is_auto_run and text == self.currenttext_raw and statusok == self.statusok:
+        if (
+            is_auto_run
+            and strip_overlay_markers(text) == strip_overlay_markers(self.currenttext_raw)
+            and statusok == self.statusok
+        ):
             return
         origin = text
         __erroroutput = functools.partial(self.__erroroutput, None, erroroutput, None)
@@ -632,7 +644,11 @@ class BASEOBJECT(QObject):
             __erroroutput(stringfyerror(e), TextType.Error_origin)
             return
 
-        if is_auto_run and text == self.currenttext and statusok == self.statusok:
+        if (
+            is_auto_run
+            and strip_overlay_markers(text) == strip_overlay_markers(self.currenttext)
+            and statusok == self.statusok
+        ):
             return
         self.currentsignature = currentsignature
         if is_auto_run and (

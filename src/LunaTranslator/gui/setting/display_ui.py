@@ -17,6 +17,7 @@ from gui.usefulwidget import (
     makecardrow,
     getsimplepatheditor,
     D_getIconSwitch,
+    NoWheelSlider,
 )
 from gui.fluent.expander import ExExpander
 from gui.dynalang import LLabel
@@ -35,7 +36,7 @@ def changeHorizontal_pic(
 
 def createhorizontal_slider_pic():
 
-    horizontal_slider = QSlider()
+    horizontal_slider = NoWheelSlider()
     horizontal_slider.setMaximum(100)
     horizontal_slider.setMinimum(0)
     horizontal_slider.setOrientation(Qt.Orientation.Horizontal)
@@ -71,7 +72,7 @@ def changeHorizontal(
 
 def createhorizontal_slider():
 
-    horizontal_slider = QSlider()
+    horizontal_slider = NoWheelSlider()
     horizontal_slider.setMaximum(100)
     horizontal_slider.setMinimum(1 - ui_settings.get("transparent_EX", False))
     horizontal_slider.setOrientation(Qt.Orientation.Horizontal)
@@ -134,7 +135,7 @@ def toolcolorchange():
 
 def createhorizontal_slider_tool():
 
-    horizontal_slider_tool = QSlider()
+    horizontal_slider_tool = NoWheelSlider()
     horizontal_slider_tool.setMaximum(100)
     horizontal_slider_tool.setMinimum(1)
     horizontal_slider_tool.setOrientation(Qt.Orientation.Horizontal)

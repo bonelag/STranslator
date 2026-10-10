@@ -9,6 +9,7 @@ from gui.usefulwidget import (
     getboxlayout,
     FocusFontCombo,
     makecardrow,
+    NoWheelSlider,
 )
 from gui.dynalang import LLabel
 import ovl
@@ -61,7 +62,7 @@ def update_color_with_opacity(color_key, rgb_key, alpha_key):
 
 
 def create_opacity_slider_generic(color_key, rgb_key, alpha_key, slider_width=140):
-    slider = QSlider(Qt.Orientation.Horizontal)
+    slider = NoWheelSlider(Qt.Orientation.Horizontal)
     if slider_width is not None:
         slider.setFixedWidth(slider_width)
     slider.setRange(0, 255)
@@ -89,13 +90,18 @@ def create_opacity_slider_generic(color_key, rgb_key, alpha_key, slider_width=14
     return getboxlayout([slider, label])
 
 
-def _srow(title):
+def _srow_widget(title):
     lab = LLabel(title)
     font = lab.font()
     font.setBold(True)
     font.setPixelSize(15)
     lab.setFont(font)
-    return [[(lab, 0)]]
+    lab.setContentsMargins(0, 8, 0, 0)
+    return lab
+
+
+def _srow(title):
+    return [[(_srow_widget(title), 0)]]
 
 
 def _cardrow(label, *controls):
@@ -195,6 +201,8 @@ def overlaysetting(self):
     text_ctrl_lay.addWidget(LLabel("自动"))
     text_ctrl_lay.addWidget(auto_text_switch)
 
+    generic_save = lambda _: save_overlay_config()
+
     # --- Viền chữ (Stroke) ---
     stroke_color_btn = D_getcolorbutton(
         self,
@@ -207,14 +215,31 @@ def overlaysetting(self):
     stroke_opacity_slider = create_opacity_slider_generic(
         "stroke_color", "_stroke_rgb", "_stroke_alpha"
     )
+    stroke_width_box = D_getspinbox(
+        0,
+        10,
+        ovl.CONFIG,
+        "stroke_width",
+        double=True,
+        step=0.5,
+        callback=generic_save,
+    )()
+    stroke_width_box.setFixedWidth(85)
+
     stroke_ctrl_widget = QWidget()
     stroke_ctrl_lay = QHBoxLayout(stroke_ctrl_widget)
     stroke_ctrl_lay.setContentsMargins(0, 0, 0, 0)
     stroke_ctrl_lay.setSpacing(8)
     stroke_ctrl_lay.addWidget(stroke_color_btn)
     stroke_ctrl_lay.addLayout(stroke_opacity_slider)
+    stroke_ctrl_lay.addSpacing(6)
+    stroke_ctrl_lay.addWidget(stroke_width_box)
+    stroke_ctrl_lay.addWidget(LLabel("px"))
 
-    generic_save = lambda _: save_overlay_config()
+    content_container = QWidget()
+    c_lay = QVBoxLayout(content_container)
+    c_lay.setContentsMargins(0, 0, 0, 0)
+    c_lay.setSpacing(8)
 
     enable_switch = D_getsimpleswitch(
         ovl.CONFIG,
@@ -222,8 +247,9 @@ def overlaysetting(self):
         callback=lambda x: (
             ovl.CONFIG.update({"enable": int(x)}),
             save_overlay_config(),
+            content_container.setVisible(bool(x)),
         ),
-    )
+    )()
     show_main_switch = D_getsimpleswitch(
         ovl.CONFIG,
         "show_in_main",
@@ -234,6 +260,16 @@ def overlaysetting(self):
             if hasattr(gobject, "base")
             and hasattr(gobject.base, "translation_ui")
             else None
+        ),
+    )
+    capture_protect_switch = D_getsimpleswitch(
+        ovl.CONFIG,
+        "screen_capture_protection",
+        default=1,
+        callback=lambda x: (
+            ovl.CONFIG.update({"screen_capture_protection": int(x)}),
+            save_overlay_config(),
+            [ovl.set_capture_affinity(o, bool(x)) for o in ovl._overlays],
         ),
     )
     auto_weight_switch = D_getsimpleswitch(
@@ -261,15 +297,6 @@ def overlaysetting(self):
         ),
     )
 
-    stroke_width_box = D_getspinbox(
-        0,
-        10,
-        ovl.CONFIG,
-        "stroke_width",
-        double=True,
-        step=0.5,
-        callback=generic_save,
-    )
     min_size_box = D_getspinbox(
         1,
         100,
@@ -310,24 +337,28 @@ def overlaysetting(self):
         100, 60000, ovl.CONFIG, "timeout_ms", callback=generic_save
     )
 
+    c_lay.addWidget(makecardrow("ovlShowInMain", show_main_switch))
+    c_lay.addWidget(makecardrow("ovlCaptureProtection", capture_protect_switch))
+    c_lay.addWidget(makecardrow("ovlTimeout", timeout_box, LLabel("ms")))
+    c_lay.addWidget(_srow_widget("文本与排版"))
+    c_lay.addWidget(makecardrow("ovlAdaptiveSize", adaptive_size_switch))
+    c_lay.addWidget(makecardrow("ovlTextSizeMin", min_size_box, LLabel("px")))
+    c_lay.addWidget(makecardrow("ovlTextSizeMax", max_size_box, LLabel("px")))
+    c_lay.addWidget(makecardrow("ovlAutoWeight", auto_weight_switch))
+    c_lay.addWidget(makecardrow("ovlAutoFamily", auto_family_switch))
+    c_lay.addWidget(makecardrow("ovlTextFont", _create_font_combo))
+    c_lay.addWidget(makecardrow("ovlPaddingH", h_padding_box, LLabel("px")))
+    c_lay.addWidget(makecardrow("ovlPaddingV", v_padding_box, LLabel("px")))
+    c_lay.addWidget(_srow_widget("颜色与外观"))
+    c_lay.addWidget(makecardrow("ovlTextColor", text_ctrl_widget))
+    c_lay.addWidget(makecardrow("ovlStrokeColor", stroke_ctrl_widget))
+    c_lay.addWidget(makecardrow("ovlBackColor", bg_ctrl_widget))
+
+    content_container.setVisible(bool(ovl.CONFIG.get("enable", 1)))
+
     grid = (
         _srow("常规")
         + _cardrow("ovlEnable", enable_switch)
-        + _cardrow("ovlShowInMain", show_main_switch)
-        + _cardrow("ovlTimeout", timeout_box, LLabel("ms"))
-        + _srow("文本与排版")
-        + _cardrow("ovlAdaptiveSize", adaptive_size_switch)
-        + _cardrow("ovlTextSizeMin", min_size_box, LLabel("px"))
-        + _cardrow("ovlTextSizeMax", max_size_box, LLabel("px"))
-        + _cardrow("ovlAutoWeight", auto_weight_switch)
-        + _cardrow("ovlAutoFamily", auto_family_switch)
-        + _cardrow("ovlTextFont", _create_font_combo)
-        + _cardrow("ovlPaddingH", h_padding_box, LLabel("px"))
-        + _cardrow("ovlPaddingV", v_padding_box, LLabel("px"))
-        + _srow("颜色与外观")
-        + _cardrow("ovlTextColor", text_ctrl_widget)
-        + _cardrow("ovlStrokeColor", stroke_ctrl_widget)
-        + _cardrow("ovlStrokeWidth", stroke_width_box, LLabel("px"))
-        + _cardrow("ovlBackColor", bg_ctrl_widget)
+        + [[(content_container, 0)]]
     )
     return grid

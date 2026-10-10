@@ -229,6 +229,11 @@ class FocusFontCombo(QFontComboBox, FocusCombo):
     pass
 
 
+class NoWheelSlider(QSlider):
+    def wheelEvent(self, e: QWheelEvent) -> None:
+        e.ignore()
+
+
 class FocusSpinBase(QAbstractSpinBox):
 
     def __init__(self, parent: QWidget = None) -> None:

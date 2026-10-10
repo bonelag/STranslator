@@ -1002,5 +1002,8 @@
     "  └─ Show Word Border": "",
     "      └─ Fill Word Background": "",
     "      └─ Fill Word Text": "",
-    "  └─ Show Font Name": ""
+    "  └─ Show Font Name": "",
+    "文本与排版": "Text & Layout",
+    "颜色与外观": "Color & Appearance",
+    "ovlCaptureProtection": "Prevent OCR Screen Capture Loop"
 }

@@ -1095,7 +1095,7 @@ def parse_indexed_segments(text: str) -> list[tuple[int, str]]:
 
     import re
 
-    matches = list(re.finditer(r"\[#(\d+)\][:\s-]*", text))
+    matches = list(re.finditer(r"\[#\s*(\d+)\][:\s-]*", text))
     result = []
     for position, match in enumerate(matches):
         end = matches[position + 1].start() if position + 1 < len(matches) else len(text)

@@ -69,7 +69,7 @@ WDA_EXCLUDEFROMCAPTURE = 0x00000011
 
 
 def set_capture_affinity(widget: QWidget, exclude: bool):
-    if not CONFIG.get("screen_capture_protection", 0):
+    if not CONFIG.get("screen_capture_protection", 1):
         return
     try:
         affinity = WDA_EXCLUDEFROMCAPTURE if exclude else 0
@@ -93,7 +93,7 @@ CONFIG = {
     "timeout_ms": 6000,
     "horizontal_padding": 4,
     "vertical_padding": 4,
-    "screen_capture_protection": 0,
+    "screen_capture_protection": 1,
     "auto_background": 0,
     "auto_text_color": 0,
     "auto_font_weight": 1,
@@ -624,7 +624,8 @@ def _layout_text_in_box(
     line_advance = max(1, round(metrics.lineSpacing() * spacing))
     text_w = max((text_width(metrics, line) for line in lines), default=0)
     if text_w > target_w + 1:
-        return None
+        if not allow_overflow:
+            return None
     tight_rects = [metrics.tightBoundingRect(line or " ") for line in lines]
     relative_top = min(rect.top() for rect in tight_rects) if tight_rects else 0
     relative_bottom = (
@@ -2051,13 +2052,14 @@ def parse_indexed_boxes(text: str, orig_boxes=None, stream_id=None) -> List[Text
                         )
                     )
                 else:
-                    # Untranslated title/body still need cover geometry so the
-                    # original line does not peek between translated neighbours
-                    # (the leftover tiny lines on HOOK/OCR cards).
+                    # Untranslated text / buttons (or skipped by translation engine)
+                    # should fall back to original source text instead of being blanked out
+                    # by an empty mask!
+                    fallback_text = source.text if (source.text or "").strip() else ""
                     result.append(
                         replace(
                             source,
-                            text="",
+                            text=fallback_text,
                             source_lines=list(source.source_lines),
                         )
                     )
@@ -3485,28 +3487,18 @@ class Overlay(QWidget):
         self.setGeometry(rect)
         dpr = max(1.0, float(screen.devicePixelRatio()))
         self.screen_origin = rect.topLeft()
-        self.screen_origin_physical_x = float(rect.x())
-        self.screen_origin_physical_y = float(rect.y())
         try:
-            class NativeRect(ctypes.Structure):
-                _fields_ = [
-                    ("left", ctypes.c_long),
-                    ("top", ctypes.c_long),
-                    ("right", ctypes.c_long),
-                    ("bottom", ctypes.c_long),
-                ]
-
-            native = NativeRect()
-            if ctypes.windll.user32.GetWindowRect(int(self.winId()), ctypes.byref(native)):
-                self.screen_origin_physical_x = float(native.left)
-                self.screen_origin_physical_y = float(native.top)
-                native_width = native.right - native.left
-                if rect.width() > 0 and native_width > 0:
-                    measured_dpr = native_width / rect.width()
-                    if 0.75 <= measured_dpr <= 4.0:
-                        dpr = measured_dpr
+            nx1, ny1, nx2, ny2 = _native_screen_geometry(screen)
+            self.screen_origin_physical_x = float(nx1)
+            self.screen_origin_physical_y = float(ny1)
+            native_width = nx2 - nx1
+            if rect.width() > 0 and native_width > 0:
+                measured_dpr = native_width / rect.width()
+                if 0.75 <= measured_dpr <= 4.0:
+                    dpr = measured_dpr
         except Exception:
-            pass
+            self.screen_origin_physical_x = float(rect.x()) * dpr
+            self.screen_origin_physical_y = float(rect.y()) * dpr
         return max(1.0, dpr)
 
     def __init__(self, boxes: Sequence[TextBox]):
@@ -3534,7 +3526,6 @@ class Overlay(QWidget):
         self.setWindowFlag(Qt.WindowType.Tool, True)
         if hasattr(Qt.WindowType, "WindowTransparentForInput"):
             self.setWindowFlag(Qt.WindowType.WindowTransparentForInput, True)
-        set_capture_affinity(self, not self.debug_mode)
 
         screen = _screen_for_boxes(boxes)
         dpr = self._configure_screen(screen)
@@ -3827,10 +3818,10 @@ class Overlay(QWidget):
                         ):
                             collision = True
                             break
-                    elif _significant_paint_overlap(
-                        candidate_cover, existing_cover
-                    ) or any(
-                        _significant_paint_overlap(candidate, current)
+                    elif any(
+                        _significant_paint_overlap(
+                            candidate, current, threshold=0.52, min_area=48
+                        )
                         for candidate in candidate_ink
                         for current in existing_ink
                     ):
@@ -3859,8 +3850,8 @@ class Overlay(QWidget):
                             break
             if label is not None and not collision:
                 self.labels.append(label)
-            elif label is not None and chat_label:
-                # Prefer showing chat text over silence.
+            elif label is not None:
+                # Prefer showing translated text over silence/empty background patch.
                 self.labels.append(label)
             else:
                 if label is not None:
@@ -3874,12 +3865,29 @@ class Overlay(QWidget):
         if getattr(self, "_updating_content", False):
             self._pending_update_boxes = list(boxes)
             return
+
+        # If identical boxes are already displayed, avoid rebuilding and flickering
+        if self.boxes and len(self.boxes) == len(boxes) and self.isVisible():
+            same = True
+            for b1, b2 in zip(self.boxes, boxes):
+                if (
+                    b1.text != b2.text
+                    or b1.x != b2.x
+                    or b1.y != b2.y
+                    or b1.width != b2.width
+                    or b1.height != b2.height
+                ):
+                    same = False
+                    break
+            if same:
+                self.timer.start(int(CONFIG["timeout_ms"]))
+                return
+
         self._updating_content = True
         self._pending_update_boxes = None
         try:
             self.timer.start(int(CONFIG["timeout_ms"]))
             self.debug_mode = False
-            set_capture_affinity(self, True)
             self.boxes = list(boxes)
             for label in self.labels:
                 label.deleteLater()
@@ -3892,13 +3900,16 @@ class Overlay(QWidget):
 
             screenshot = None
             if CONFIG.get("auto_background", 0) or CONFIG.get("auto_text_color", 0) or CONFIG.get("auto_font_weight", 0):
-                was_visible = self.isVisible()
-                if was_visible:
-                    self.hide()
-                    QApplication.processEvents()
-                screenshot = screen.grabWindow(0).toImage()
-                if was_visible:
-                    self.show()
+                if not CONFIG.get("screen_capture_protection", 0):
+                    was_visible = self.isVisible()
+                    if was_visible:
+                        self.hide()
+                        QApplication.processEvents()
+                    screenshot = screen.grabWindow(0).toImage()
+                    if was_visible:
+                        self.show()
+                else:
+                    screenshot = screen.grabWindow(0).toImage()
 
             self._render_boxes(self.boxes, dpr, screenshot)
             self.update()
@@ -4292,6 +4303,10 @@ class Overlay(QWidget):
                     draw_rect = r_text.adjusted(4, 2, -4, -2)
                     painter.drawText(draw_rect, Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignBottom, font_name)
 
+    def showEvent(self, event):
+        super().showEvent(event)
+        set_capture_affinity(self, not self.debug_mode)
+
     def closeEvent(self, event):
         if self in _overlays:
             _overlays.remove(self)
@@ -4465,8 +4480,8 @@ class Overlay(QWidget):
                 if fitted:
                     break
             px -= 1
-        if not fitted and chat and (box.text or "").strip():
-            # Last resort: paint at min size inside the cap — never drop chat text.
+        if not fitted and (box.text or "").strip():
+            # Last resort: paint at min size — never drop text to leave an empty box.
             try_h = max(
                 base_height,
                 float(getattr(box, "_chat_max_height", base_height) or base_height),
@@ -4478,7 +4493,7 @@ class Overlay(QWidget):
                 target_w=target_w,
                 target_h=max(1, int(try_h - chat_vpad)),
                 box_height=try_h,
-                role="chat",
+                role="chat" if chat else (box.role or "body"),
                 source_line_count=source_line_count,
                 source_spacing=box.line_spacing,
                 vpad=chat_vpad,
@@ -4499,6 +4514,21 @@ class Overlay(QWidget):
                 fitted = True
                 used_height = try_h
                 label._line_spacing = spacing
+        if not fitted and (box.text or "").strip():
+            # Absolute fallback: never drop non-empty text to leave an empty blank patch.
+            font.setPixelSize(min_px)
+            metrics = QFontMetrics(font)
+            raw_text = box.text.strip()
+            lines = [raw_text]
+            tight_rects = [metrics.tightBoundingRect(raw_text)]
+            relative_top = min((rect.top() for rect in tight_rects), default=0)
+            relative_bottom = max((rect.bottom() for rect in tight_rects), default=0)
+            fitted_baseline = max(1.0, float(-relative_top))
+            line_advance = max(1, metrics.lineSpacing())
+            spacing = 1.0
+            fitted = True
+            used_height = max(base_height, float(relative_bottom - relative_top + 4))
+            label._line_spacing = spacing
         if not fitted:
             label.deleteLater()
             return None
@@ -4535,9 +4565,10 @@ class Overlay(QWidget):
             cover_h = min(float(box.height), cover_h)
             cover_h = max(cover_h, min(float(box.height), content_h))
             cover_h = min(max(cover_h, content_h), max(used_height, base_height))
+        max_line_w = max((text_width(metrics, line) for line in lines), default=0)
         label_x = round(box.x - paint_margin)
         label_y = round(box.y - paint_margin)
-        label_w = max(1, round(box.width + paint_margin * 2))
+        label_w = max(1, round(box.width + paint_margin * 2), round(max_line_w + paint_margin * 2 + hpad))
         label_h = max(1, round(cover_h + paint_margin * 2))
         label.setGeometry(QRect(label_x, label_y, label_w, label_h))
         # Cover the source ink and the text actually painted — not the whole

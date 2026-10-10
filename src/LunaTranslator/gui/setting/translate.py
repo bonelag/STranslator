@@ -58,6 +58,7 @@ from gui.usefulwidget import (
     getsimplecombobox,
     GroupCardWidget,
     FocusSpin,
+    NoWheelSlider,
 )
 from gui.setting.display_text import GetFormForLineHeight
 from gui.dynalang import (
@@ -826,7 +827,7 @@ def _c_slice_spin(
     )
     __()
     l2 = QHBoxLayout(w)
-    context_length = QSlider()
+    context_length = NoWheelSlider()
     context_length.setOrientation(Qt.Orientation.Horizontal)
     context_length.setRange(range0, range1)
     context_length.setPageStep(step)

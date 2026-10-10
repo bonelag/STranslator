@@ -1495,7 +1495,6 @@ class TranslatorWindow(resizableframeless):
     def clickRange(self):
         if globalconfig["sourcestatus2"]["ocr"]["use"] == False:
             return
-        self.showhidestate = False
         ovl.close_all()
 
         rangeselct_function(functools.partial(self.afterrange, False))
@@ -1503,25 +1502,23 @@ class TranslatorWindow(resizableframeless):
     def clickRangeclear(self):
         if globalconfig["sourcestatus2"]["ocr"]["use"] == False:
             return
-        self.showhidestate = False
         ovl.close_all()
 
         rangeselct_function(functools.partial(self.afterrange, True))
 
     @tryprint
     def afterrange(self, clear, rect, img=None):
+        if not rect.isValid():
+            return
         if clear or not globalconfig.get("multiregion", False):
             gobject.base.textsource.clearrange()
         gobject.base.textsource.newrangeadjustor()
         gobject.base.textsource.setrect(rect)
-        if (self.showhidestateFirst) or (
-            self.showhidestate and not self.showhidestateFirst
-        ):
-            self.showhidestateFirst = False
-            self.showhidestate = True
-            self.refreshtoolicon()
+        self.showhidestateFirst = False
+        self.showhidestate = True
+        self.refreshtoolicon()
         try:
-            gobject.base.textsource.showhiderangeui(self.showhidestate)
+            gobject.base.textsource.showhiderangeui(True)
         except:
             pass
 

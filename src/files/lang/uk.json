@@ -991,5 +991,8 @@
     "ovlShowInMain": "Show translation on main window",
     "ovlAutoWeight": "Auto font weight from source text",
     "ovlAutoFamily": "Detect font for each text block",
-    "ovlAdaptiveSize": "Preserve source text size"
+    "ovlAdaptiveSize": "Preserve source text size",
+    "文本与排版": "Текст і макет",
+    "颜色与外观": "Колір і зовнішній вигляд",
+    "ovlCaptureProtection": "Захист від захоплення екрана"
 }

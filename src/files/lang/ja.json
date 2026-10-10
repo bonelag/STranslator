@@ -991,5 +991,8 @@
     "ovlShowInMain": "メインウィンドウに翻訳を表示",
     "ovlAutoWeight": "原文に合わせて太字を自動設定",
     "ovlAutoFamily": "テキストブロック毎にフォント自動認識",
-    "ovlAdaptiveSize": "原文のフォントサイズを保持"
+    "ovlAdaptiveSize": "原文のフォントサイズを保持",
+    "文本与排版": "テキストとレイアウト",
+    "颜色与外观": "色と外観",
+    "ovlCaptureProtection": "キャプチャ除外（重複OCR防止）"
 }

@@ -418,6 +418,10 @@ class rangeadjust(Mainw):
                 self.show()
             r = round(globalconfig.get("ocrrangewidth", 1) * self.devicePixelRatioF())
             self.setGeometry(rect.adjusted(-r, -r, r, r))
+            self.label.setGeometry(self.rect())
+            self.label.raise_()
+            for s in self.cornerGrips:
+                s.raise_()
         self._rect = rect
         # 由于使用movewindow而非qt函数，导致内部执行绪有问题。
 

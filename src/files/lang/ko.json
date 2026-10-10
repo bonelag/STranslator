@@ -991,5 +991,8 @@
     "ovlShowInMain": "기본 창에 번역 표시",
     "ovlAutoWeight": "원본 텍스트 굵기 자동 반영",
     "ovlAutoFamily": "텍스트 블록별 글꼴 자동 인식",
-    "ovlAdaptiveSize": "원본 글꼴 크기 유지"
+    "ovlAdaptiveSize": "원본 글꼴 크기 유지",
+    "文本与排版": "텍스트 및 레이아웃",
+    "颜色与外观": "색상 및 모양",
+    "ovlCaptureProtection": "화면 캡처 방지 (중복 인식 방지)"
 }

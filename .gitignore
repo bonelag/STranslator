@@ -22,7 +22,7 @@ Thumbs.db
 build/
 builds/
 
-
+src/imgtest
 .vscode/settings.json
 src/.cache
 src/userconfig*

@@ -1,4 +1,4 @@
-import time, json
+import time, json, re
 from myutils.config import globalconfig
 from myutils.utils import checkmd5reloadmodule, parsekeystringtomodvkcode
 import NativeUtils, windows
@@ -41,6 +41,14 @@ def imageCutEx(hwnd, rectX: QRect):
         except:
             print_exc()
     return img
+
+
+def strip_overlay_markers(text: str) -> str:
+    if not text:
+        return ""
+    t = re.sub(r"\[#\d+\]\s*", "", text)
+    t = re.sub(r"\[-?\d+ -?\d+\|-?\d+ -?\d+\]\s*", "", t)
+    return t.strip()
 
 
 class rangemanger:
@@ -104,8 +112,9 @@ class rangemanger:
         result = ocr_run(imgr, (rect.x(), rect.y()))
         t = result.textonly
         self.lastocrtime = time.time()
-        sim = NativeUtils.distance(self.savelasttext, t)
-        self.savelasttext = t
+        clean_t = strip_overlay_markers(t)
+        clean_last = strip_overlay_markers(self.savelasttext)
+        sim = NativeUtils.distance(clean_last, clean_t)
         if sim < globalconfig.get("ocr_text_diff", 3):
             return
         self.savelasttext = t

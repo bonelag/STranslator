@@ -991,5 +991,8 @@
     "ovlShowInMain": "在主視窗顯示翻譯",
     "ovlAutoWeight": "根據原文自動字體粗細",
     "ovlAutoFamily": "按文字塊自動識別字體",
-    "ovlAdaptiveSize": "保留原文字體大小"
+    "ovlAdaptiveSize": "保留原文字體大小",
+    "文本与排版": "文字與版面",
+    "颜色与外观": "顏色與外觀",
+    "ovlCaptureProtection": "防止螢幕擷取/重複辨識"
 }
